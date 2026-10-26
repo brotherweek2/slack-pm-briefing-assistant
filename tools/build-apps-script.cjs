@@ -1,4 +1,4 @@
-// 중앙 봇 원본 23개 → Apps Script 업로드용 7개 파일로 합친다(동작 동일: Apps Script는 모든 파일을 한 전역 공간에서 실행).
+// 중앙 봇 원본(번호 파일) → Apps Script 업로드용 7개 파일로 합친다(동작 동일: Apps Script는 모든 파일을 한 전역 공간에서 실행).
 // 사용: node tools/build-apps-script.cjs            → apps-script-deploy/ 생성(이 폴더에서 clasp push)
 //       node tools/build-apps-script.cjs <출력폴더> → 테스트용
 // 원본 수정은 항상 apps-script-linked/에서 한다. apps-script-deploy/의 파일을 직접 고치지 않는다.

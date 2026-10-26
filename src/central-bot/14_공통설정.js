@@ -156,7 +156,8 @@ function briefingSection_(text) {
 // 미리보기 로그용: 블록 구조를 구분선 줄로 보여준다(Slack 화면 모양 확인용).
 function briefingBlocksAsText_(blocks) {
   return blocks.map(block => block.type === 'divider' ? '──────────' :
-    block.type === 'context' ? '(회색) ' + block.elements[0].text : block.text.text).join('\n');
+    block.type === 'context' ? '(회색) ' + block.elements[0].text :
+    block.type === 'actions' ? '[버튼] ' + block.elements.map(e => e.text.text).join(' / ') : block.text.text).join('\n');
 }
 
 function postSlackDm_(token, userId, text, deliveryKey, blocks) {

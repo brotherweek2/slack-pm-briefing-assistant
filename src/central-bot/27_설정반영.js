@@ -1,0 +1,70 @@
+/**
+ * 27. 설정 반영 — 스크립트 속성이 50개를 넘어 편집기 "프로젝트 설정"에서 수정할 수 없을 때 쓰는 우회 경로.
+ * - applyBotSettings(): [직접 실행] 봇 시트 BOT_SETTINGS 탭의 A열 이름·B열 값을 스크립트 속성에 반영한다.
+ *   허용한 이름만 받는다. 토큰처럼 민감한 값은 반영 직후 시트에서 지운다. 탭이 없으면 빈 양식을 만든다.
+ *   B열을 비우면 그 설정은 건드리지 않는다. 값에 '삭제'를 적으면 그 속성을 지운다.
+ * - previewBotSettings(): [직접 실행] 허용 설정의 현재 값을 로그로 본다(민감한 값은 있음/없음만). 변경 없음.
+ * - 영향: 봇 전용 시트의 BOT_SETTINGS 탭과 스크립트 속성만. DM·원천 시트·트리거 변경 없음.
+ */
+const BOT_SETTINGS = Object.freeze({tab:'BOT_SETTINGS', headers:['setting', 'value', 'note'],
+  allowed:{
+    ENABLE_LUNCH_MATE:{note:'true면 11시 점심 추천에 점심 메이트 버튼 표시(Slack 버튼 응답 주소 등록 후)'},
+    SLACK_VERIFICATION_TOKEN:{note:'Slack 앱 Basic Information의 Verification Token. 반영 후 시트에서 자동 삭제', secret:true},
+    ENABLE_WEATHER:{note:'true면 17시 DM에 내일 날씨(Open-Meteo, 비상업적 무료 조건 확인 후)'},
+    WEATHER_LAT:{note:'날씨 위도(비우면 서울 시청)'}, WEATHER_LON:{note:'날씨 경도'}, WEATHER_PLACE:{note:'날씨에 표시할 지역 이름(예: 강남)'},
+    ENABLE_LUNCH_RECOMMENDATION:{note:'false면 점심 추천 끄기'}, ENABLE_BRIEFING_PHRASES:{note:'false면 한마디 끄기'},
+  }});
+
+function botSettingsSheet_(props, create) {
+  const bot = SpreadsheetApp.openById(requiredProperty_(props, 'BOT_SPREADSHEET_ID'));
+  let sheet = bot.getSheetByName(BOT_SETTINGS.tab);
+  if (!sheet && create) {
+    sheet = ensureBotSheet_(bot, BOT_SETTINGS.tab, BOT_SETTINGS.headers);
+    const rows = Object.entries(BOT_SETTINGS.allowed).map(([key, info]) => [key, '', info.note]);
+    sheet.getRange(2, 1, rows.length, 3).setValues(rows);
+  }
+  if (sheet) assertBotHeaders_(sheet, BOT_SETTINGS.headers);
+  return sheet;
+}
+
+function applyBotSettings() {
+  const props = PropertiesService.getScriptProperties();
+  const sheet = botSettingsSheet_(props, true);
+  const height = Math.max(0, sheet.getLastRow() - 1);
+  const rows = height ? sheet.getRange(2, 1, height, 2).getValues() : [];
+  const applied = [], skipped = [];
+  rows.forEach((row, index) => {
+    const key = String(row[0] || '').trim(), value = String(row[1] == null ? '' : row[1]).trim();
+    if (!key || !value) return;
+    const info = BOT_SETTINGS.allowed[key];
+    if (!info) { skipped.push(key); return; }
+    if (value === '삭제') props.deleteProperty(key);
+    else props.setProperty(key, value);
+    applied.push(key + (value === '삭제' ? ' 삭제' : info.secret ? ' 저장(값 숨김)' : ' = ' + value));
+    // 민감한 값은 시트에 남기지 않는다. 그 외 값도 반영 후 비워서 다음 실행에 다시 적용되지 않게 한다.
+    sheet.getRange(index + 2, 2).setValue('');
+  });
+  if (!applied.length) {
+    // 무엇을 읽었는지 보여 준다(값 자체는 출력하지 않음). 다른 파일·다른 열에 적은 경우를 바로 알 수 있게.
+    const file = SpreadsheetApp.openById(requiredProperty_(props, 'BOT_SPREADSHEET_ID'));
+    const wide = height ? sheet.getRange(2, 1, height, 3).getValues() : [];
+    const misplaced = wide.filter(r => String(r[0] || '').trim() && !String(r[1] == null ? '' : r[1]).trim() &&
+      String(r[2] || '').trim() && !Object.values(BOT_SETTINGS.allowed).some(info => info.note === String(r[2]).trim()))
+      .map(r => String(r[0]).trim());
+    console.log('반영할 값 없음 · 읽은 위치: 파일 "' + file.getName() + '" → 탭 ' + BOT_SETTINGS.tab + ' B2:B' + (height + 1) +
+      ' (' + height + '행, 값이 있는 칸 0개)');
+    if (misplaced.length) console.log('C열(설명 칸)에 값이 적힌 것 같습니다: ' + misplaced.join(', ') + ' → B열(value)로 옮겨 주세요.');
+    console.log('B열에 값을 적었는데도 0개라면, 위 파일 이름이 값을 적은 시트와 같은지 확인하세요.');
+  } else console.log('반영: ' + applied.join(' | '));
+  if (skipped.length) console.log('허용되지 않은 이름이라 건너뜀: ' + skipped.join(', '));
+  console.log('봇 시트 BOT_SETTINGS·스크립트 속성만 변경 | DM·원천 시트·트리거 변경 없음');
+}
+
+function previewBotSettings() {
+  const props = PropertiesService.getScriptProperties();
+  Object.entries(BOT_SETTINGS.allowed).forEach(([key, info]) => {
+    const value = props.getProperty(key);
+    console.log(key + ' : ' + (value === null ? '(없음)' : info.secret ? '설정됨' : value));
+  });
+  console.log('조회만 | 변경 없음');
+}

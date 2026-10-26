@@ -65,3 +65,14 @@ console.log('Codex review regressions passed');
 // 11시 실제 출력 피드백: 첫 구절은 단어 경계에서 자르고 열린 괄호를 남기지 않는다.
 assert.equal(ctx.slackDigestSnippet_({text: '[10/30(금) HA-CV 납품 대상 파일 검수 일정 (언어쌍별 상이) 안내드립니다'}), '[10/30(금) HA-CV 납품 대상 파일 검수 일정…');
 console.log('Snippet cut checks passed');
+
+// 10/23 시험 DM 피드백: 멘션만 있는 첫 줄 대신 내용 있는 줄, [제목] 우선, 답글이 비면 부모 [제목], 작성자는 이름만.
+{
+  const line = extra => ctx.slackDigestDetailLine_(Object.assign({authorName: '작성자A/TEAM/user.a'}, extra));
+  assert.equal(line({text: '<@U00000001> <@U00000002> 님,\n캘린더 및 해당 스레드 확인하시어 참석 부탁드립니다'}),
+    '\n   ↳ 작성자A · "캘린더 및 해당 스레드 확인하시어 참석 부탁드립니다"');
+  assert.equal(line({text: '<@U00000001>\n안녕하세요.\n[리소스 관리 체계 고도화 관련 안내]\n본문'}), '\n   ↳ 작성자A · [리소스 관리 체계 고도화 관련 안내]');
+  assert.equal(line({text: '<@U00000001> ...', threadParentText: '[납품 대상 파일 검수 일정] 안내'}), '\n   ↳ 작성자A · [납품 대상 파일 검수 일정]');
+  assert.equal(line({text: '<@U00000001> <@U00000002>, 님,'}), '\n   ↳ 작성자A', 'no "…" or ", , 님," fragments');
+  console.log('Snippet quality checks passed');
+}

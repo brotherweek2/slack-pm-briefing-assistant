@@ -50,6 +50,34 @@ function formatCalendarBriefing_(snapshot, includeTomorrow) {
   else {
     append('오늘 ', snapshot.day, snapshot.today, '오늘 남은 회의 없음');
     append('내일 ', snapshot.tomorrowDay, snapshot.tomorrow, '내일 회의 없음');
+    // 17시: 내일 첫 일정이 10시 전이면 눈에 띄게 표시한다.
+    const first = snapshot.tomorrow.filter(event => !event.allDay)
+      .sort((a, b) => a.start - b.start)[0];
+    if (first && Number(Utilities.formatDate(new Date(first.start), BRIEFING.timezone, 'HH')) < 10) {
+      const at = lines.findIndex(line => line.startsWith('• 내일 ' + Utilities.formatDate(new Date(first.start), BRIEFING.timezone, 'HH:mm') + ' '));
+      if (at >= 0) lines[at] += ' · 🌅 이른 시작';
+    }
   }
+  lines.push(...calendarMeetingNotes_(snapshot, includeTomorrow));
   return '\n' + lines.join('\n');
+}
+
+// 회의 영역 끝 안내: 겹치는 회의, 응답하지 않은 초대. 없으면 아무 줄도 추가하지 않는다.
+function calendarMeetingNotes_(snapshot, includeTomorrow) {
+  const notes = [];
+  const time = value => Utilities.formatDate(new Date(value), BRIEFING.timezone, 'HH:mm');
+  const overlaps = (events, prefix) => {
+    const timed = events.filter(event => !event.allDay).sort((a, b) => a.start - b.start);
+    for (let i = 1; i < timed.length; i++) {
+      const before = timed.slice(0, i).find(event => event.end > timed[i].start);
+      if (before) notes.push('• ⚠️ ' + prefix + '회의 겹침: ' + time(before.start) + ' ' + escapeSlack_(before.title.replace(/[\r\n]+/g, ' ')) +
+        ' ↔ ' + time(timed[i].start) + ' ' + escapeSlack_(timed[i].title.replace(/[\r\n]+/g, ' ')));
+    }
+  };
+  overlaps(snapshot.today, includeTomorrow ? '오늘 ' : '');
+  if (includeTomorrow) overlaps(snapshot.tomorrow, '내일 ');
+  const pending = snapshot.today.concat(includeTomorrow ? snapshot.tomorrow : []).filter(event => event.status === '응답 전').length;
+  // 1건이면 그 회의 줄의 '응답 전'으로 충분하다. 2건 이상일 때만 모아서 알린다.
+  if (pending >= 2) notes.push('• 📨 응답 전 초대 ' + pending + '건 — 캘린더에서 참석 여부를 눌러주세요');
+  return notes;
 }

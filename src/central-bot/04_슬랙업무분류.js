@@ -339,17 +339,35 @@ function slackDigestDueLabel_(due, raw) {
 // 누르기 전에 무슨 일인지 알 수 있게 작성자와 원문 첫 구절을 하위 줄로 붙인다. 둘 다 없으면 빈 문자열.
 function slackDigestDetailLine_(item) {
   const parts = [];
-  if (item.authorName) parts.push(escapeSlack_(item.authorName));
+  if (item.authorName) parts.push(escapeSlack_(slackAuthorShortName_(item.authorName)));
   const snippet = slackDigestSnippet_(item);
-  if (snippet) parts.push('"' + escapeSlack_(snippet) + '"');
+  if (snippet) parts.push(slackDigestSnippetText_(snippet));
   return parts.length ? '\n   ↳ ' + parts.join(' · ') : '';
 }
 
+// 회사 표시 이름이 '이름/팀/아이디' 형식이라 앞의 이름만 쓴다.
+function slackAuthorShortName_(name) {
+  return String(name || '').split('/')[0].trim();
+}
+
+// [제목]은 그대로, 본문 구절은 따옴표로 감싼다.
+function slackDigestSnippetText_(snippet) {
+  return /^\[[^\]]+\]$/.test(snippet) ? escapeSlack_(snippet) : '"' + escapeSlack_(snippet) + '"';
+}
+
+// 고르는 순서: 원문의 [제목] → 멘션·인사말을 뺀 내용 있는 첫 줄 → (답글에 내용이 없으면) 스레드 부모의 [제목].
 function slackDigestSnippet_(item) {
-  const latest = String(item.text || '').split('\n').map(line => slackDigestPlain_(line)
-    .replace(/[_*~`>]/g, '').replace(/\s+/g, ' ').trim())
-    .find(line => line.length > 3 && !/^(안녕하세요|안녕하십니까)[.!\s]*$/.test(line)) || '';
-  const chars = Array.from(latest.replace(/^(안녕하세요|안녕하십니까)[.!,\s]*/, ''));
+  const clean = text => String(text || '').split('\n').map(line => slackDigestPlain_(line)
+    .replace(/[_*~`>]/g, '').replace(/\s+/g, ' ').trim()
+    // 멘션을 지우고 남은 쉼표·'님'·기호와 인사말을 앞에서 떼어낸다.
+    .replace(/^(?:[\s,.:;·~\-!]|님(?=[\s,.!]|$)|(?:안녕하세요|안녕하십니까)[.!,~]*)+/, '').trim());
+  const meaningful = line => (line.match(/[가-힣A-Za-z0-9]/g) || []).length >= 6;
+  const title = text => { const m = String(slackDigestPlain_(text || '')).match(/\[([^\[\]\n]{4,40})\]/); return m ? '[' + m[1].trim() + ']' : ''; };
+  const ownTitle = title(item.text);
+  if (ownTitle) return ownTitle;
+  const line = clean(item.text).find(meaningful) || '';
+  if (!line) return title(item.threadParentText);
+  const chars = Array.from(line);
   if (chars.length <= 32) return chars.join('');
   // 단어 중간이 아니라 마지막 띄어쓰기에서 자르고, 짝이 안 맞는 여는 괄호·구분 기호는 떼어낸다.
   let cut = chars.slice(0, 32).join('');
@@ -383,8 +401,8 @@ function attachSlackToWorkLines_(workText, items, day) {
     const deadline = slackDigestDeadlineText_(item, due);
     const posted = slackDigestPostedAt_(item.ts);
     const scope = item.category === 'direct' ? '개인' : 'BBPM';
-    const detail = [item.authorName ? escapeSlack_(item.authorName) : '',
-      slackDigestSnippet_(item) ? '"' + escapeSlack_(slackDigestSnippet_(item)) + '"' : ''].filter(Boolean).join(' ');
+    const detail = [item.authorName ? escapeSlack_(slackAuthorShortName_(item.authorName)) : '',
+      slackDigestSnippet_(item) ? slackDigestSnippetText_(slackDigestSnippet_(item)) : ''].filter(Boolean).join(' ');
     let end = at + 1;
     while (end < lines.length && /^ {2,}↳/.test(lines[end])) end++;
     lines.splice(end, 0, '   ↳ 관련 Slack [' + scope + '] <' + item.url + '|원문' + (posted ? ' ' + posted : '') + '>' +

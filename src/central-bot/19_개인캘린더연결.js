@@ -20,6 +20,7 @@
  * - 이 파일만 업로드해도 활성화되지 않는다. 신규 웹 앱 배포·서명키·명단 설정 필요.
  */
 function doPost(e) {
+  if (e && e.parameter && typeof e.parameter.payload === 'string') return handleSlackInteraction_(e);
   try {
     const props = PropertiesService.getScriptProperties();
     const request = selfCalendarAuthenticate_(e, props, Date.now());

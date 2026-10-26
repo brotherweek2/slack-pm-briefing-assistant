@@ -210,6 +210,8 @@ function sendPmBriefings_(updatedTest, includeSlack, scheduledSlot, _unused, del
         slackSection = slackFailure ? '\n\n💬 *Slack*\n⚠️ Slack 확인사항을 읽어오지 못했습니다 — ' + slackFailure :
           formatPersonalSlackDigest_(merged.rest, day, effectiveSlot, merged.attached);
       }
+      // 월요일 11시·금요일 17시에만 업무 아래에 주간 안내를 붙인다.
+      message += formatWeeklyOutlook_(route.pm, rows, day, effectiveSlot);
       // 기준 시각은 정보 영역 끝에 한 줄로 둔다. 점심·한마디는 그 아래에 붙는다.
       slackSection += formatBriefingBasis_(new Date(), slackAsOf, day,
         props.getProperty('ENABLE_CALENDAR_BRIEFING') === 'true');
@@ -220,6 +222,7 @@ function sendPmBriefings_(updatedTest, includeSlack, scheduledSlot, _unused, del
       'manual-test-slack-digest' : updatedTest ? 'manual-test-resend' : 'manual-personal';
     let phraseCatalog;
     let lunchCatalog;
+    let lunchMate = null; // 점심 메이트: 켠 PM 전원 기준으로 한 번만 계산(묶음이 달라도 같은 결과)
     const failures = [];
     for (const packet of packets) {
       const {route,ownTasks,seen,shownSlack,slackSection,effectiveSlot}=packet;
@@ -250,9 +253,18 @@ function sendPmBriefings_(updatedTest, includeSlack, scheduledSlot, _unused, del
         try {
           if (!lunchCatalog) lunchCatalog = readLunchRestaurantCatalog_(bot);
           lunch = pickLunchRecommendation_(props,route,day,effectiveSlot,lunchCatalog);
-          message += formatLunchRecommendation_(lunch);
+          if (lunch) {
+            if (!lunchMate) {
+              const participants = lunchMateParticipants_(props, userRows);
+              lunchMate = {participants, plan:lunchMatePlan_(participants, lunchCatalog, day)};
+            }
+            lunch = applyLunchMate_(lunch, lunchMate.plan, route, day);
+          }
+          message += formatLunchRecommendation_(lunch) + (lunch ? formatLunchMateLine_(route, lunchMate.plan, lunchMate.participants) : '');
         } catch (error) { console.log('점심 추천 생략: 식당 목록·추천 이력 확인 필요 | 업무 브리핑은 유지'); }
       }
+      // 17시: 내일 날씨(켜져 있을 때)와 목·금 주말 인사.
+      message += formatEveningNotes_(props, day, effectiveSlot);
       let phrase = null;
       if (props.getProperty('ENABLE_BRIEFING_PHRASES') !== 'false') {
         try {
@@ -261,7 +273,10 @@ function sendPmBriefings_(updatedTest, includeSlack, scheduledSlot, _unused, del
           message += formatBriefingPhrase_(phrase);
         } catch (error) { console.log('한마디 생략: 문구 탭 또는 선택 이력 확인 필요 | 업무 브리핑은 유지'); }
       }
-      postSlackDm_(token, route.id, message, slot, buildBriefingBlocks_(message));
+      let blocks = buildBriefingBlocks_(message);
+      // 점심 메이트 버튼: Slack 버튼 응답 주소를 등록하고 ENABLE_LUNCH_MATE=true일 때만.
+      if (lunch && props.getProperty('ENABLE_LUNCH_MATE') === 'true') blocks = insertLunchMateButton_(blocks, lunchMateButtonBlock_(lunchMateOn_(props, route.id)));
+      postSlackDm_(token, route.id, message, slot, blocks);
       doneIds.push(route.id);
       log.appendRow([new Date(), slot, route.pm, ownTasks.map(row => row[0]).join(', '),
         calendarFailure ? 'sent-calendar-unavailable' : slackFailure ? 'sent-sheet-only' : 'sent']);
@@ -380,6 +395,7 @@ function previewPersonalAssistantBriefing_(slot) {
     const merged = attachSlackToWorkLines_(message, selectPersonalSlackItems_(route.pm, items, seen, day, slot), day);
     message = merged.text;
     slackSection = formatPersonalSlackDigest_(merged.rest, day, slot, merged.attached);
+    message += formatWeeklyOutlook_(route.pm, rows, day, slot);
     slackAsOf = Utilities.formatDate(new Date(snapshot.meta.newest * 1000), BRIEFING.timezone, 'yyyy-MM-dd HH:mm');
   } catch (error) { slackSection = '\n\n💬 *Slack*\n⚠️ Slack 확인사항을 읽어오지 못했습니다 — ' + describeSlackFailure_(error, props); }
   const withCalendar = props.getProperty('ENABLE_CALENDAR_BRIEFING') === 'true';
@@ -391,16 +407,23 @@ function previewPersonalAssistantBriefing_(slot) {
   message += formatBriefingBasis_(now, slackAsOf, day, withCalendar, true);
   if (slot === '11:00' && props.getProperty('ENABLE_LUNCH_RECOMMENDATION') !== 'false') {
     try {
-      message += formatLunchRecommendation_(pickLunchRecommendation_(props,route,day,slot,readLunchRestaurantCatalog_(bot)));
+      const catalog = readLunchRestaurantCatalog_(bot);
+      let lunch = pickLunchRecommendation_(props,route,day,slot,catalog);
+      const participants = lunchMateParticipants_(props, users), plan = lunchMatePlan_(participants, catalog, day);
+      if (lunch) lunch = applyLunchMate_(lunch, plan, route, day);
+      message += formatLunchRecommendation_(lunch) + (lunch ? formatLunchMateLine_(route, plan, participants) : '');
     } catch (error) { console.log('점심 추천 미리보기 생략: 식당 목록·추천 이력 확인 필요'); }
   }
+  message += formatEveningNotes_(props, day, slot);
   if (props.getProperty('ENABLE_BRIEFING_PHRASES') !== 'false') {
     try {
       message += formatBriefingPhrase_(pickBriefingPhrase_(props,route,day,slot,readBriefingPhraseCatalog_(bot)));
     } catch (error) { console.log('한마디 미리보기 생략: 문구 탭 또는 선택 이력 확인 필요'); }
   }
   // 실제 DM과 같은 블록 구조로 보여준다(구분선·회색 기준 줄). 블록 상한 초과면 텍스트 그대로.
-  const blocks = buildBriefingBlocks_(message);
+  let blocks = buildBriefingBlocks_(message);
+  // 실제 DM처럼 점심 영역 아래 점심 메이트 버튼도 보여 준다(점심 추천이 있는 11시 문안만).
+  if (props.getProperty('ENABLE_LUNCH_MATE') === 'true') blocks = insertLunchMateButton_(blocks, lunchMateButtonBlock_(lunchMateOn_(props, route.id)));
   console.log(blocks ? briefingBlocksAsText_(blocks) : message);
   console.log('현재 자료로 회차별 문안만 확인 | 과거 시각 재현 아님 | 원천 새 조회·시트/이력 변경·Slack 수집/발송 없음');
 }
