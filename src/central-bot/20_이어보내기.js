@@ -1,6 +1,6 @@
 /**
  * 20. 연결 PM 정기 DM 이어 보내기 — 연결 PM 확대 모드에서만 사용.
- * - startConnectedBriefingRound_: 11/17시 수신자 명단 고정·회차 생성. 8명씩 처리.
+ * - startConnectedBriefingRound_: 회차(10:30·14:00·17:00)별 수신자 명단 고정·회차 생성. 8명씩 처리.
  * - resumeConnectedBriefingSend(): 예약된 미처리 대상만 실제 DM 발송. 수동 실행도 발송 가능.
  *   날짜/회차/현재 승인/연결/발송 여부 재검사. 결과 불명확 건은 자동 재전송하지 않는다.
  * - previewConnectedSendProgress(): 대기 수·시도 수·상태 조회만. ID·내용 출력 없음.
@@ -17,7 +17,7 @@ function enabledConnectedSend_(props) {
 
 function startConnectedBriefingRound_(slot) {
   const props=PropertiesService.getScriptProperties();
-  if(!enabledConnectedSend_(props)||!['11:00','17:00'].includes(slot)) throw new Error('연결 PM 정기 발송 설정 확인 필요');
+  if(!enabledConnectedSend_(props)||!['11:00','14:00','17:00'].includes(slot)) throw new Error('연결 PM 정기 발송 설정 확인 필요');
   const now=Date.now(),day=Utilities.formatDate(new Date(now),BRIEFING.timezone,'yyyy-MM-dd');
   const request=JSON.parse(props.getProperty('CONNECTED_SEND_REQUEST')||'null');
   // 시작 시 잠금이 바빠도 요청을 잃지 않는다. 같은 회차 재호출은 유효기간을 늘리지 않는다.
@@ -35,7 +35,7 @@ function resumeConnectedBriefingSend() {
     job=JSON.parse(props.getProperty('CONNECTED_SEND_JOB')||'null');
     const request=JSON.parse(props.getProperty('CONNECTED_SEND_REQUEST')||'null');
     if(request&&request.day===day&&now<request.expiresAt&&(!job||job.day!==day||job.slot!==request.slot)) {
-      if(!enabledConnectedSend_(props)||!['11:00','17:00'].includes(request.slot)) {clearConnectedSendResume_();return;}
+      if(!enabledConnectedSend_(props)||!['11:00','14:00','17:00'].includes(request.slot)) {clearConnectedSendResume_();return;}
       const bot=SpreadsheetApp.openById(requiredProperty_(props,'BOT_SPREADSHEET_ID'));
       const rows=readBotRows_(requireBotSheet_(bot,BOT_WORKBOOK.usersTab,BOT_WORKBOOK.userHeaders),BOT_WORKBOOK.userHeaders.length);
       const routes=selfCalendarFilterRoutes_(buildPmSlackRoutes_(rows,rows.map(row=>String(row[0]||'').trim()).filter(Boolean)),props);
@@ -102,7 +102,7 @@ function clearConnectedSendResume_() {
 }
 function previewConnectedSendProgress() {
   const job=JSON.parse(PropertiesService.getScriptProperties().getProperty('CONNECTED_SEND_JOB')||'null');
-  console.log(job?'정기 DM '+job.slot+' | 상태 '+job.state+' | 전체 '+job.total+'명 | 남음 '+job.pendingIds.length+
+  console.log(job?'정기 DM '+briefingSlotLabel_(job.slot)+' | 상태 '+job.state+' | 전체 '+job.total+'명 | 남음 '+job.pendingIds.length+
     '명 | 확인 필요 '+job.failed+'명 | 시도 '+job.attempts+'회':'이어 보내기 기록 없음');
   console.log('상태 조회만 | ID·DM 내용 출력·설정/시트/트리거 변경·Slack 발송 없음');
 }

@@ -17,6 +17,8 @@ const defaults = {
   formatWeeklyOutlook_: () => '', formatTomorrowWeather_: () => '', formatWeekendCountdown_: () => '', formatEveningNotes_: () => '',
   lunchMateParticipants_: () => [], lunchMatePlan_: () => new Map(), applyLunchMate_: selection => selection,
   formatLunchMateLine_: () => '', lunchMateOn_: () => false, lunchMateButtonBlock_: () => null, insertLunchMateButton_: blocks => blocks,
+  appendFeedbackButtons_: blocks => blocks, feedbackEnabled_: () => false, morningTaskKeys_: () => null, briefingSlotLabel_: slot => slot,
+  formatAfternoonUpdate_: (pm) => ({text: 'AFTERNOON ' + pm, quiet: false}),
 };
 const original = module.exports;
 module.exports = function loadBriefingBlocksWithDefaults(context) {

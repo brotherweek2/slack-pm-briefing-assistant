@@ -72,7 +72,12 @@ assert.throws(()=>ctx.selfCalendarApply_(request('disconnect',{sentAt:now+5}),pr
 assert.throws(()=>ctx.selfCalendarValidateEvents_({day:'2000-01-01',events:[]},now),/SNAPSHOT/);
 assert.throws(()=>ctx.selfCalendarValidateEvents_({day,events:[{...r.snapshot.events[0],title:'x'.repeat(301)}]},now),/EVENT/);
 roster.push(['Other','U000000003',true,'one@example.test']);
-assert.throws(()=>ctx.selfCalendarRegistry_(props),/ROUTE/);roster.pop();
+// 한 줄의 중복은 그 줄들만 빼고 나머지 PM은 계속 쓴다(회차 전체를 멈추지 않음).
+{const reg=ctx.selfCalendarRegistry_(props);
+ assert.ok(!reg.some(row=>row.email==='one@example.test'),'duplicate email rows are excluded');
+ assert.ok(reg.some(row=>row.pm==='Two'),'other PMs keep working');
+ assert.equal(reg.skipped.length,2);}
+roster.pop();
 // Connector uses Google identity, never user-supplied email/Slack ID; mocks perform no network calls.
 const userValues=new Map();
 const user={getProperty:k=>userValues.get(k)||null,setProperty:(k,v)=>userValues.set(k,v),
@@ -115,6 +120,8 @@ let dispatch=[];
 const schedule=vm.createContext({Date,console,PropertiesService:{getScriptProperties:()=>props},
   sendPmBriefings_:(...args)=>dispatch.push(args),startConnectedBriefingRound_:slot=>dispatch.push([false,true,slot]),notifyAdminRoundSummary_:()=>{}});
 vm.runInContext(fs.readFileSync('src/central-bot/09_자동실행.js','utf8'),schedule);
+// 공휴일 판단(28번)은 DayOff.test.js에서 검사한다. 여기서는 이 테스트의 평일 가짜 함수를 따른다.
+schedule.briefingDayOff_ = now => schedule.isBriefingWeekday_(now) ? '' : '주말';
 schedule.isBriefingWeekday_=()=>true;
 values.delete('ENABLE_CONNECTED_PM_SEND');schedule.sendScheduledBriefing_('11:00');
 assert.equal(dispatch[0][0],true);

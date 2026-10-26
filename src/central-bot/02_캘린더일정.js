@@ -27,12 +27,12 @@ function buildLiveCalendarSection_(route, props, slot, now, viewFrom) {
   return '\n\n📅 *회의*\n• 개인 캘린더 연결 방식이 꺼져 있습니다 (ENABLE_SELF_CALENDAR_PIPELINE)';
 }
 
-// 조회 시각은 발송부의 기준 줄에 모은다. 17시에는 오늘 남은 회의와 내일 회의를 한 목록으로 보인다.
+// 조회 시각은 발송부의 기준 줄에 모은다. 17:00에는 오늘 남은 회의와 내일 회의를 한 목록으로 보인다.
 function calendarSectionTitle_(includeTomorrow) {
   return '\n\n📅 *' + (includeTomorrow ? '회의' : '오늘 회의') + '*';
 }
 
-// 11시 문안은 includeTomorrow=false, 17시 문안은 true로 사용한다. 제목 줄은 호출부가 붙인다.
+// 10:30 문안은 includeTomorrow=false, 17:00 문안은 true로 사용한다. 제목 줄은 호출부가 붙인다.
 function formatCalendarBriefing_(snapshot, includeTomorrow) {
   const lines = [];
   const append = (prefix, day, events, emptyText) => {
@@ -50,7 +50,7 @@ function formatCalendarBriefing_(snapshot, includeTomorrow) {
   else {
     append('오늘 ', snapshot.day, snapshot.today, '오늘 남은 회의 없음');
     append('내일 ', snapshot.tomorrowDay, snapshot.tomorrow, '내일 회의 없음');
-    // 17시: 내일 첫 일정이 10시 전이면 눈에 띄게 표시한다.
+    // 17:00: 내일 첫 일정이 10시 전이면 눈에 띄게 표시한다.
     const first = snapshot.tomorrow.filter(event => !event.allDay)
       .sort((a, b) => a.start - b.start)[0];
     if (first && Number(Utilities.formatDate(new Date(first.start), BRIEFING.timezone, 'HH')) < 10) {

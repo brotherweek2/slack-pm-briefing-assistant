@@ -8,10 +8,13 @@
  */
 const BOT_SETTINGS = Object.freeze({tab:'BOT_SETTINGS', headers:['setting', 'value', 'note'],
   allowed:{
-    ENABLE_LUNCH_MATE:{note:'true면 11시 점심 추천에 점심 메이트 버튼 표시(Slack 버튼 응답 주소 등록 후)'},
+    ENABLE_LUNCH_MATE:{note:'true면 10:30 점심 추천에 점심 메이트 버튼 표시(Slack 버튼 응답 주소 등록 후)'},
     SLACK_VERIFICATION_TOKEN:{note:'Slack 앱 Basic Information의 Verification Token. 반영 후 시트에서 자동 삭제', secret:true},
-    ENABLE_WEATHER:{note:'true면 17시 DM에 내일 날씨(Open-Meteo, 비상업적 무료 조건 확인 후)'},
+    ENABLE_WEATHER:{note:'true면 17:00 DM에 내일 날씨(Open-Meteo, 비상업적 무료 조건 확인 후)'},
     WEATHER_LAT:{note:'날씨 위도(비우면 서울 시청)'}, WEATHER_LON:{note:'날씨 경도'}, WEATHER_PLACE:{note:'날씨에 표시할 지역 이름(예: 강남)'},
+    FEEDBACK_FORM_URL:{note:'피드백 "✍️ 자세히 남기기" 버튼이 여는 구글 폼 주소(docs.google.com/forms 또는 forms.gle)'},
+    ENABLE_FEEDBACK:{note:'false면 DM 아래 피드백 버튼 끄기'},
+    COMPANY_HOLIDAYS:{note:'회사만 쉬는 날(쉼표로 구분, 예: 2026-12-31,2027-01-02). 정기 DM·수집 건너뜀'},
     ENABLE_LUNCH_RECOMMENDATION:{note:'false면 점심 추천 끄기'}, ENABLE_BRIEFING_PHRASES:{note:'false면 한마디 끄기'},
   }});
 
@@ -27,9 +30,23 @@ function botSettingsSheet_(props, create) {
   return sheet;
 }
 
+// 기존 탭의 C열 설명을 최신 문구로 맞추고, 새로 생긴 허용 설정은 빈 줄로 추가한다(B열 값은 건드리지 않음).
+function refreshBotSettingsNotes_(sheet) {
+  const height = Math.max(0, sheet.getLastRow() - 1);
+  const keys = height ? sheet.getRange(2, 1, height, 1).getValues().map(r => String(r[0] || '').trim()) : [];
+  keys.forEach((key, i) => {
+    const info = BOT_SETTINGS.allowed[key];
+    if (info) sheet.getRange(i + 2, 3).setValue(info.note);
+  });
+  const missing = Object.keys(BOT_SETTINGS.allowed).filter(key => !keys.includes(key));
+  if (missing.length) sheet.getRange(height + 2, 1, missing.length, 3)
+    .setValues(missing.map(key => [key, '', BOT_SETTINGS.allowed[key].note]));
+}
+
 function applyBotSettings() {
   const props = PropertiesService.getScriptProperties();
   const sheet = botSettingsSheet_(props, true);
+  refreshBotSettingsNotes_(sheet);
   const height = Math.max(0, sheet.getLastRow() - 1);
   const rows = height ? sheet.getRange(2, 1, height, 2).getValues() : [];
   const applied = [], skipped = [];

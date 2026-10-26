@@ -32,6 +32,7 @@ function fixture(extra) {
     briefingPhraseStateKey_: (route, slot) => 'BRIEFING_PHRASE_' + route.id + slot,
     lunchRecommendationStateKey_: (route, kind) => 'LUNCH_CHOICE_' + route.id + (kind === 'light' ? '_LIGHT' : ''),
   });
+  vm.runInContext(fs.readFileSync('src/central-bot/29_오후업데이트.js', 'utf8'), ctx); // 회차 표시 이름·실제 시각
   vm.runInContext(fs.readFileSync('src/central-bot/23_운영알림.js', 'utf8'), ctx);
   return {ctx, props, values, dms, logs};
 }
@@ -42,7 +43,7 @@ const now = new Date(at('11:03'));
 const summary = f.ctx.buildAdminRoundSummary_(f.props, '11:00', {state: 'complete-with-errors', total: 3, pendingIds: [],
   failedIds: ['U00000002'], failures: {U00000002: 'Slack 발송 실패: channel_not_found'}, failed: 1}, now);
 assert.equal(summary.adminId, 'U00000001');
-assert.match(summary.text, /^🛠 \*11:00 정기 DM 점검\* · 10\/23\(금\)/);
+assert.match(summary.text, /^🛠 \*10:30 오전 정기 DM 점검\* · 10\/23\(금\)/);
 assert.match(summary.text, /• 발송 2\/3명 완료/);
 assert.match(summary.text, /• 확인 필요: PM B/);
 assert.match(summary.text, /• Slack 자료 10:52 기준\n/);
@@ -109,6 +110,8 @@ const start = vm.createContext({PropertiesService: {getScriptProperties: () => (
 const notes = [];
 start.notifyAdminRoundSummary_ = (slot, info) => notes.push({slot, info});
 vm.runInContext(fs.readFileSync('src/central-bot/09_자동실행.js', 'utf8'), start);
+// 공휴일 판단(28번)은 DayOff.test.js에서 검사한다. 여기서는 이 테스트의 평일 가짜 함수를 따른다.
+start.briefingDayOff_ = now => start.isBriefingWeekday_(now) ? '' : '주말';
 assert.throws(() => start.sendScheduledBriefing11(), /개인 연결 파이프라인 설정/);
 assert.equal(notes.length, 1, 'config error is reported too');notes.length=0;
 start.PropertiesService = {getScriptProperties: () => ({getProperty: k => ['ENABLE_CONNECTED_PM_SEND', 'ENABLE_SELF_CALENDAR_PIPELINE'].includes(k) ? 'true' : null})};
@@ -124,7 +127,7 @@ console.log('Admin round summary, hints, once-per-slot, cleanup and start-failur
   g.ctx.readBbpmSnapshot_ = () => ({meta: {newest: at('11:10') / 1000}});
   assert.doesNotMatch(g.ctx.buildAdminRoundSummary_(g.props, '11:00', {state: 'complete', total: 1, pendingIds: [], failedIds: []}, new Date(at('14:11'))).text, /지남|collectBbpmSnapshot/);
   g.ctx.readBbpmSnapshot_ = () => ({meta: {newest: at('08:00') / 1000}});
-  assert.match(g.ctx.buildAdminRoundSummary_(g.props, '11:00', {}, new Date(at('14:11'))).text, /⚠️ 180분 지남/);
+  assert.match(g.ctx.buildAdminRoundSummary_(g.props, '11:00', {}, new Date(at('14:11'))).text, /⚠️ 150분 지남/);
   console.log('Freshness is judged at the round time');
 }
 
@@ -140,4 +143,15 @@ console.log('Admin round summary, hints, once-per-slot, cleanup and start-failur
     elapsedMs: 250000, batches: 1, maxBatchMs: 250000, maxBatchSize: 8}, new Date(at('11:05'))).text;
   assert.match(slow, /⚠️ 4분 초과[\s\S]*묶음 크기\(8명\) 축소/);
   console.log('Round timing summary checks passed');
+}
+
+// 명단 문제(그 PM만 제외·업무 없이 발송)를 같은 날 같은 회차 요약에 보여 준다.
+{
+  const g = fixture({ROUTE_ISSUES: JSON.stringify({day: '2026-10-23', slot: '11:00', items: ['PM C: 업무 시트 담당자 이름과 맞지 않음 → 업무 없이 발송']})});
+  g.ctx.selfCalendarRegistry_ = () => [];
+  const t = g.ctx.buildAdminRoundSummary_(g.props, '11:00', {state: 'complete', total: 1, pendingIds: [], failedIds: []}, new Date(at('10:40'))).text;
+  assert.match(t, /• 명단 확인 필요: PM C: 업무 시트 담당자 이름과 맞지 않음/);
+  assert.match(t, /A열 이름\(업무 시트 담당 탭 이름과 같게\)/);
+  assert.doesNotMatch(g.ctx.buildAdminRoundSummary_(g.props, '17:00', {state: 'complete', total: 1, pendingIds: [], failedIds: []}, new Date(at('17:05'))).text, /명단 확인 필요/, 'other rounds unaffected');
+  console.log('Roster issues appear in the round summary');
 }

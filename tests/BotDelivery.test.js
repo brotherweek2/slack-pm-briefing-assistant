@@ -7,8 +7,8 @@ const sent = [];
 const logRows = [];
 const users = [
   ['PM A', 'U0000000002', true],
-  ['PM B', 'U0000000003', true],
-  ['PM C', 'U0000000004', true],
+  ['PM B', 'U0000000004', true],
+  ['PM C', 'U0000000005', true],
 ];
 const task = (pm, pair) => {
   const row = Array(18).fill('');
@@ -64,12 +64,12 @@ assert.match(sent[0].message, /\|언어쌍 종료 임박> 1건/);
 assert.match(sent[0].message, /#gid=123\|/);
 assert.doesNotMatch(sent[0].message, /#gid=456/);
 assert.doesNotMatch(sent[0].message, /de_DE-fr_FR|PM B/);
-assert.equal(sent[1].id, 'U0000000003');
+assert.equal(sent[1].id, 'U0000000004');
 assert.match(sent[1].message, /\|언어쌍 종료 임박> 1건/);
 assert.match(sent[1].message, /#gid=456\|/);
 assert.doesNotMatch(sent[1].message, /#gid=123/);
 assert.doesNotMatch(sent[1].message, /en_US-ja_JP|PM A/);
-assert.equal(sent[2].id, 'U0000000004');
+assert.equal(sent[2].id, 'U0000000005');
 assert.match(sent[2].message, /📌 \*오늘 확인할 업무\*\n• 확인할 특이사항 없음/);
 assert.doesNotMatch(sent[2].message, /en_US-ja_JP|de_DE-fr_FR/);
 assert.equal(logRows.length, 3);
@@ -203,7 +203,7 @@ context.PropertiesService={getScriptProperties:()=>({getProperty:key=>
 let ownEmail='own@example.test';
 context.Session={getEffectiveUser:()=>({getEmail:()=>ownEmail})};
 context.selfCalendarRegistry_=()=>[{pm:'PM A',email:'own@example.test',slackId:'U0000000002',sendEnabled:true},
- {pm:'PM B',email:'other@example.test',slackId:'U0000000003',sendEnabled:true}];
+ {pm:'PM B',email:'other@example.test',slackId:'U0000000004',sendEnabled:true}];
 context.buildLiveCalendarSection_=()=> '\nOWN CALENDAR';
 context.refreshBotTasks=()=>({pmNames:['PM A','PM B','PM C']});
 const flags=JSON.stringify(users),beforeSelf=sent.length,oldSlots=logRows.map(row=>row[1]);

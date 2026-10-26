@@ -6,7 +6,7 @@
  *   중앙이 초대한 수신자만 개인 발송 활성화/완료 DM. 이 앱에는 Slack 토큰 없음.
  * - refreshCalendar: 연결된 본인 회의 즉시 갱신. DM 없음.
  * - disconnectCalendar: 본인 트리거 중지·중앙 회의 삭제 요청. 실패 시 재시도 안내.
- * - syncMyMeetings: 본인 설치 트리거. 평일 수집 시간대에만 갱신한다.
+ * - syncMyMeetings: 본인 설치 트리거. 평일 09:45~10:45·13:30~14:15·16:00~17:15에만 갱신한다.
  * - connectorStaggerMs_: 사용자별 자동 수집 시작을 0~30초 분산. 수동 갱신에는 미적용.
  * - connectorSend_: 저장 BUSY/HTTP 429만 제한적으로 재시도. 승인 오류는 재시도하지 않는다.
  * - 03번 수집부: 개인·Schedule·Review & Delivery·휴일을 각각 읽는다. Tasks 조회 없음.
@@ -85,7 +85,8 @@ function syncMyMeetings(event) {
   const now = new Date();
   const weekday = Number(Utilities.formatDate(now, 'Asia/Seoul', 'u'));
   const hhmm = Number(Utilities.formatDate(now, 'Asia/Seoul', 'HHmm'));
-  if (weekday > 5 || !((hhmm >= 1000 && hhmm <= 1115) || (hhmm >= 1600 && hhmm <= 1715))) return;
+  // 중앙 정기 DM(10:30·14:00·17:00) 직전에만 갱신한다.
+  if (weekday > 5 || !((hhmm >= 945 && hhmm <= 1045) || (hhmm >= 1330 && hhmm <= 1415) || (hhmm >= 1600 && hhmm <= 1715))) return;
   const triggered=!!(event&&event.triggerUid&&connectorTriggers_().some(trigger=>
     typeof trigger.getUniqueId==='function'&&String(trigger.getUniqueId())===String(event.triggerUid)));
   if (triggered) Utilities.sleep(connectorStaggerMs_(connectorAccount_(false)));

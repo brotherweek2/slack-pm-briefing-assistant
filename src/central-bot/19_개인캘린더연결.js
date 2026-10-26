@@ -3,13 +3,13 @@
  * - doPost(e): [웹 앱 진입점 — 직접 실행하지 않음] 별도 연결 앱의 서명 요청 수신. 등록 이메일과 BOT_USERS를 대조한다.
  *   봇 전용 BOT_CALENDAR_PERSONAL만 갱신. 원천 시트·Slack·트리거 변경 없음.
  * - previewSelfCalendarSetup(): 설정 유무·연결 수만 조회. 개인정보·비밀키 출력 없음.
- * - previewConnectedCalendarStatus(): PM별 실제 자동 갱신·원천 상태·당일 11/17시 성공 기록 조회.
+ * - previewConnectedCalendarStatus(): PM별 실제 자동 갱신·원천 상태·당일 10:30/14:00/17:00 성공 기록 조회.
  *   기능 테스트와 무인 갱신·발송을 구분한다. 조회만, 설정/시트/트리거/DM 변경 없음.
  * - selfCalendarSection_: 본인 수신자와 일치하는 최신 회의만 DM 문안으로 변환.
  * - selfCalendarFilterRoutes_: 발송 TRUE 명단 중 본인 연결 완료 수신자만 통과.
  * - selfCalendarAuthenticate_: HMAC·시각·요청 형식 검사. 연결 앱 서버만 비밀키 보유.
  * - selfCalendarApply_: 잠금 안에서 요청 순서·연결 ID 검사 후 제한된 캐시 교체.
- * - selfCalendarRegistry_: BOT_USERS 이메일/이름/Slack ID 중복 및 등록 명단 검사.
+ * - selfCalendarRegistry_: BOT_USERS 등록 명단. 이메일/이름/Slack ID 중복·형식 오류 줄은 그 PM만 빼고 skipped에 남긴다.
  *   등록 명단: BOT_USERS E열 제목이 calendar_connect면 체크된 행, 아니면 예전 SELF_CALENDAR_ALLOWED_EMAILS.
  * - calendarConnectLink_(props,label): 실제 배포 URL일 때만 연결 앱 Slack 링크를 만든다.
  * - selfCalendarValidateEvents_: 수집 날짜·행 수·필드·시간·크기 검사.
@@ -83,15 +83,23 @@ function selfCalendarRegistry_(props) {
   }
   const rows = sheet.getLastRow() > 1 ? sheet.getRange(2,1,sheet.getLastRow()-1,useColumn ? 5 : 4).getValues() : [];
   if (useColumn && rows.filter(row => row[4] === true).length > 100) throw new Error('ALLOWLIST');
-  const emails = new Set(), names = new Set(), ids = new Set();
-  const records = [];
+  // 문제 있는 줄(이름·Slack ID 누락/형식 오류, 이메일·이름·ID 중복)은 그 PM만 빼고 나머지는 그대로 쓴다.
+  // 중복은 어느 줄이 맞는지 알 수 없으므로 겹치는 줄을 모두 뺀다. 빠진 줄은 records.skipped에 남긴다.
+  const candidates = [];
   rows.forEach((row,index) => {
     const email = String(row[3] || '').trim().toLowerCase();
     if (useColumn ? row[4] !== true || !email : !allowedSet.has(email)) return;
-    const pm = String(row[0] || '').trim(), slackId = String(row[1] || '').trim();
-    if (!pm || !/^[UW][A-Z0-9]{8,}$/.test(slackId) || emails.has(email) || names.has(pm) || ids.has(slackId)) throw new Error('ROUTE');
-    emails.add(email); names.add(pm); ids.add(slackId); records.push({email,pm,slackId,sendEnabled:row[2]===true,row:index+2});
+    candidates.push({email,pm:String(row[0] || '').trim(),slackId:String(row[1] || '').trim(),sendEnabled:row[2]===true,row:index+2});
   });
+  const dup = (key, value) => candidates.filter(other => other[key] === value).length > 1;
+  const records = [], skipped = [];
+  candidates.forEach(item => {
+    const reason = !item.pm || !/^[UW][A-Z0-9]{8,}$/.test(item.slackId) ? '이름·Slack ID 확인' :
+      dup('email', item.email) || dup('pm', item.pm) || dup('slackId', item.slackId) ? '이메일·이름·Slack ID 중복' : '';
+    if (reason) skipped.push((item.pm || item.row + '행') + ': ' + reason);
+    else records.push(item);
+  });
+  records.skipped = skipped;
   return records;
 }
 
@@ -178,7 +186,7 @@ function calendarConnectLink_(props,label) {
 }
 
 function selfCalendarSection_(route, props, slot, now, viewFrom) {
-  // 회의 영역 제목은 기존 경로와 같은 calendarSectionTitle_을 쓴다(11시 '오늘 회의', 17시 '회의').
+  // 회의 영역 제목은 calendarSectionTitle_을 쓴다(10:30 '오늘 회의', 17:00 '회의').
   const includeTomorrow = slot === '17:00' || (!slot && Number(Utilities.formatDate(now,'Asia/Seoul','HH')) >= 17);
   const title = calendarSectionTitle_(includeTomorrow);
   const connect = calendarConnectLink_(props,'연결하기');
@@ -250,23 +258,25 @@ function previewConnectedCalendarStatus() {
   const stamp=value=>value?Utilities.formatDate(new Date(value),'Asia/Seoul','MM/dd HH:mm'):'기록 없음';
   registered.forEach(route=>{
     const matches=cached.filter(row=>row[0]===route.email);
-    const state=matches.length===1?JSON.parse(matches[0][1]):null;
+    let state=null;try{state=matches.length===1?JSON.parse(matches[0][1]):null;}catch(_){}
     const valid=state&&state.pm===route.pm&&state.slackId===route.slackId;
     const good=valid&&state.connected===true;
     const age=valid?Math.floor((now.getTime()-state.sentAt)/60000):null;
     const sources=valid?state.sources||[]:[];
     const actualSent=slot=>sent.some(row=>row[0] instanceof Date&&
-      Utilities.formatDate(row[0],'Asia/Seoul','yyyy-MM-dd')===day&&row[1]==='scheduled-'+slot&&row[2]===route.pm&&row[4]==='sent');
+      Utilities.formatDate(row[0],'Asia/Seoul','yyyy-MM-dd')===day&&row[1]==='scheduled-'+slot&&row[2]===route.pm&&/^sent/.test(String(row[4])));
     console.log(route.pm+' | 발송 설정 '+(route.sendEnabled?'ON':'OFF')+' | 개인 연결 '+(good?'완료':'미완료')+
       ' | 네 캘린더 조회 성공 '+sources.filter(s=>s.status==='ok').length+'/4'+
       ' | 최근 수집 '+(age===null?'없음':age+'분 전')+
       ' | 실제 자동 갱신 '+stamp(valid?state.lastAutomaticAt:0)+
-      ' | 오늘 정기 발송 11시 '+(actualSent('11:00')?'성공 기록 있음':'기록 없음')+
-      ' / 17시 '+(actualSent('17:00')?'성공 기록 있음':'기록 없음'));
+      ' | 오늘 정기 발송 10:30 '+(actualSent('11:00')?'성공 기록 있음':'기록 없음')+
+      ' / 14:00 '+(actualSent('14:00')?'성공 기록 있음':'기록 없음')+' / 17:00 '+(actualSent('17:00')?'성공 기록 있음':'기록 없음'));
   });
+  if(registered.skipped.length) console.log('⚠️ 연결 명단에서 제외된 줄: '+registered.skipped.join(' / ')+' → BOT_USERS 확인');
   const handlers=ScriptApp.getProjectTriggers().map(trigger=>trigger.getHandlerFunction());
-  console.log('현재 실행 계정의 정기 발송 트리거: 11시 '+handlers.filter(h=>h==='sendScheduledBriefing11').length+
-    '개 / 17시 '+handlers.filter(h=>h==='sendScheduledBriefing17').length+'개');
+  const count=name=>handlers.filter(h=>h===name).length;
+  console.log('현재 실행 계정의 정기 발송 트리거: 10:30 '+count('sendScheduledBriefing11')+'개 / 14:00 '+
+    count('sendScheduledBriefing14')+'개 / 17:00 '+count('sendScheduledBriefing17')+'개');
   console.log('동료 계정 트리거 목록은 조회할 수 없어 실제 자동 수신 기록으로 확인 | 수신 DM과 원본 일정 대조는 별도 필요 | 조회만, 변경·발송 없음');
 }
 
@@ -280,8 +290,11 @@ function selfCalendarFilterRoutes_(routes, props) {
     if (!binding) return false;
     const matches = rows.filter(row => row[0] === binding.email);
     if (matches.length !== 1) return false;
-    const state = JSON.parse(matches[0][1]);
-    return state.connected === true && state.pm === route.pm && state.slackId === route.id;
+    // 한 사람의 저장값이 깨져도 그 사람만 빠진다.
+    try {
+      const state = JSON.parse(matches[0][1]);
+      return state.connected === true && state.pm === route.pm && state.slackId === route.id;
+    } catch (_) { return false; }
   });
 }
 

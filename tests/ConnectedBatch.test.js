@@ -35,10 +35,10 @@ function fixture(){
 }
 let f=fixture();f.ctx.startConnectedBriefingRound_('11:00');
 assert.equal(f.sent.length,8);assert.equal(f.job().pendingIds.length,17);assert.equal(f.triggers().length,1);
-f.users.push(['Late PM','U0000000005',true]);
+f.users.push(['Late PM','U0000000006',true]);
 for(let i=0;i<3;i++){f.advance(60000);f.ctx.resumeConnectedBriefingSend();assert.ok(f.triggers().length<=1);}
 assert.equal(f.sent.length,25);assert.equal(new Set(f.sent.map(s=>s.id)).size,25);
-assert.ok(!f.sent.some(s=>s.id==='U0000000005'),'recipient cohort does not expand during retry');
+assert.ok(!f.sent.some(s=>s.id==='U0000000006'),'recipient cohort does not expand during retry');
 assert.equal(f.job().state,'complete');assert.equal(f.triggers().length,0);
 // 회차가 끝나면 관리자 요약을 정확히 한 번 요청한다(중간 배치에서는 보내지 않음).
 assert.equal(f.admin.length,1);assert.equal(f.admin[0].slot,'11:00');assert.equal(f.admin[0].info.total,25);assert.equal(f.admin[0].info.pendingIds.length,0);
@@ -64,3 +64,27 @@ assert.equal(f.admin.length,1,'stopped round is reported once');assert.equal(f.a
 f=fixture();f.ctx.startConnectedBriefingRound_('11:00');f.values.set('ENABLE_PM_SEND','false');f.advance(60000);f.ctx.resumeConnectedBriefingSend();
 assert.equal(f.sent.length,8);assert.equal(f.job().state,'stopped');
 console.log('25-recipient actual sender/worker integration: 8-per-batch, fixed cohort, no duplicates, rate limit, ambiguous response, disable and expiry passed');
+
+// 14시 회차: 같은 이어 보내기 경로로 '오후 업데이트' 문안을 보내고, 발송 기록 회차는 scheduled-14:00.
+{
+  const g=fixture();g.ctx.startConnectedBriefingRound_('14:00');
+  for(let i=0;i<3;i++){g.advance(60000);g.ctx.resumeConnectedBriefingSend();}
+  assert.equal(g.sent.length,25);
+  assert.ok(g.sent.every(s=>/^AFTERNOON PM \d+$/.test(s.message)),'afternoon text only (no lunch, meetings or phrase)');
+  assert.ok(g.sent.every(s=>s.slot==='scheduled-14:00'));
+  console.log('14:00 round uses the afternoon update path');
+}
+
+// 한 PM의 문안 준비 오류(예: 오래된 업무 자료)는 그 PM만 실패로 남기고 나머지는 보낸다.
+{
+  const g=fixture();
+  g.ctx.assertFreshPilotTasks_=tasks=>{};
+  const realFormat=g.ctx.formatPersonalWorkBriefing_;
+  g.ctx.formatPersonalWorkBriefing_=(pm,...rest)=>{if(pm==='PM 3')throw new Error('synthetic prep failure');return realFormat(pm,...rest);};
+  g.ctx.startConnectedBriefingRound_('11:00');
+  for(let i=0;i<3;i++){g.advance(60000);g.ctx.resumeConnectedBriefingSend();}
+  assert.equal(g.sent.length,24,'everyone except the failing PM');
+  assert.ok(!g.sent.some(s=>s.id==='U00000004'));
+  assert.equal(g.job().failed,1);assert.match(g.job().failures.U00000004,/synthetic prep failure/);
+  console.log('One PM preparation error does not stop the round');
+}

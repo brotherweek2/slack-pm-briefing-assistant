@@ -96,10 +96,14 @@ assert.throws(() => sendPersonal(), /ENABLE_PM_SEND/, 'personal DM is disabled b
 const routes = vm.runInContext('buildPmSlackRoutes_', context);
 assert.equal(routes([['PM A', 'U0000000002', true], ['PM B', '', false]],
   ['PM A', 'PM B']).length, 1, 'only opted-in PMs receive a route');
-assert.throws(() => routes([['PM A', 'U0000000002', true],
-  ['PM B', 'U0000000002', true]], ['PM A', 'PM B']), /같은 Slack ID/);
-assert.throws(() => routes([['PM A', 'U0000000002', true]], ['PM B']), /확인되지 않은 담당 PM/);
-assert.throws(() => routes([['PM A', '', true]], ['PM A']), /Slack 사용자 ID/);
+// 명단 문제는 그 PM만 처리하고 회차 전체를 멈추지 않는다(10/26).
+const issues = [];
+assert.equal(routes([['PM A', 'U0000000002', true], ['PM B', 'U0000000002', true], ['PM C', 'U0000000003', true]], ['PM A', 'PM B', 'PM C'], issues).map(r => r.pm).join(), 'PM C', 'same Slack ID on two PMs → both skipped, others still sent');
+assert.match(issues.join(' / '), /PM A: 같은 Slack ID.*PM B: 같은 Slack ID/);
+const unknown = routes([['PM A', 'U0000000002', true]], ['PM B']);
+assert.equal(unknown.length, 1); assert.equal(unknown[0].unknownOwner, true, 'name not in work sheet → sent without work section');
+assert.equal(routes([['PM A', '', true], ['PM B', 'U0000000003', true]], ['PM A', 'PM B']).map(r => r.pm).join(), 'PM B', 'invalid Slack ID → only that PM skipped');
+assert.equal(routes([['PM A', 'U0000000002', true], ['PM A', 'U0000000003', true]], ['PM A']).length, 0, 'duplicate name rows → skipped');
 const ownOnly = formatAll('PM A', [own, other], '2026-10-07', null, 'send');
 assert.doesNotMatch(ownOnly, /PM B|미리보기/);
 assert.match(ownOnly, /언어쌍 종료 임박 1건/);

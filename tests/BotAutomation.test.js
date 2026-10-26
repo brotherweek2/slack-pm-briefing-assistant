@@ -8,6 +8,9 @@ const digestUtilities = {DigestAlgorithm:{SHA_256:'sha256'},
 const ctx = vm.createContext({console, Utilities:digestUtilities, BRIEFING:{timezone:'Asia/Seoul'},
   LockService:{getScriptLock:()=>({tryLock:()=>true,releaseLock:()=>{}})}});
 vm.runInContext(fs.readFileSync('src/central-bot/03_슬랙수집.js','utf8'),ctx);
+// 공휴일 판단(28번)은 DayOff.test.js에서 검사한다. 여기서는 이 테스트의 평일 가짜 함수를 따른다.
+ctx.briefingDayOff_ = now => ctx.isBriefingWeekday_(now) ? '' : '주말';
+ctx.briefingSlotLabel_ = slot => slot;
 const values = new Map();
 let rows=[];
 const sheet={getLastRow:()=>rows.length,clearContents:()=>{rows=[];},
@@ -165,10 +168,14 @@ assert.equal(JSON.stringify(records.map(item=>item.pm+':'+item.category).sort())
 // 수집 시간대: 트리거 실행은 시간대 밖이면 아무것도 하지 않는다.
 const inWindow=vm.runInContext('isBbpmCollectWindow_',ctx);
 const kstAt=hm=>new Date('2026-10-16T'+hm+':00+09:00');
-assert.equal(inWindow(kstAt('09:59')),false);
-assert.equal(inWindow(kstAt('10:00')),true);
-assert.equal(inWindow(kstAt('11:15')),true);
+// 10:30·14:00·17:00 회차 직전: 09:45~10:45, 13:30~14:15, 16:00~17:15
+assert.equal(inWindow(kstAt('09:44')),false);
+assert.equal(inWindow(kstAt('09:45')),true);
+assert.equal(inWindow(kstAt('10:45')),true);
+assert.equal(inWindow(kstAt('11:00')),false);
 assert.equal(inWindow(kstAt('13:00')),false);
+assert.equal(inWindow(kstAt('13:30')),true);
+assert.equal(inWindow(kstAt('14:16')),false);
 assert.equal(inWindow(kstAt('16:40')),true);
 let steps=0;
 ctx.runBbpmCollectStep_=()=>{steps++;return {progress:'synthetic'};};
@@ -223,7 +230,7 @@ ctx.console={log:line=>diagnosticLogs.push(line)};
 freezeAt(new Date((nowSec+600+60*60+1)*1000));
 const beforeState=JSON.stringify([...values]);
 ctx.previewBriefingAutomationStatus();
-assert.ok(diagnosticLogs.some(line=>line.includes('collectBbpmSnapshot 트리거: 1개')));
+assert.ok(diagnosticLogs.some(line=>line.includes('Slack 미리 수집(10분마다) 트리거: 1개')));
 assert.ok(diagnosticLogs.some(line=>line.includes('최신성 범위 초과')),'60m1s already exceeds the limit');
 assert.equal(JSON.stringify([...values]),beforeState,'diagnostic changes no settings');
 ctx.Date=realDate;

@@ -1,69 +1,56 @@
 /**
  * 09. 자동실행
- * - 역할: 수집·11시·17시 트리거 설치와 상태 점검
- * - 읽는 법: [직접 실행]은 편집기에서 선택, [내부]는 상위 함수가 필요한 인수를 전달해 자동 호출.
- * - 이름 끝 _ 는 내부 함수. 함수 식별자는 유지하므로 기존 트리거·호출 연결은 그대로 사용.
- * - 아래 번호는 안내 제목이며 실제 함수 이름 앞에 숫자를 입력하지 않는다.
+ * - 역할: 정기 DM 3회차(10:30 오전 · 14:00 오후 · 17:00 마무리)와 Slack 미리 수집 트리거의 설치·해제·상태 점검.
+ * - 내부 회차 이름은 '11:00' / '14:00' / '17:00'으로 유지한다(발송 이력·문구 시트가 이 이름을 쓴다).
+ *   실제 실행 시각과 화면 표시는 29번 파일의 SLOT_TIME·briefingSlotLabel_을 따른다. ('11:00' → 10:30 실행)
+ * - 읽는 법: [직접 실행]은 편집기에서 선택, [내부]는 상위 함수가 자동 호출. 이름 끝 _ 는 내부 함수.
  *
- * 09-01. 11시 자동 DM [직접 실행]
- * - 함수: sendScheduledBriefing11()
- * - 기능: 평일 11시 회차를 시작한다. 연결 PM 모드(ENABLE_CONNECTED_PM_SEND)면 발송 대상 PM 전원에게 8명씩 이어 보내고, 아니면 본인 시범 1명에게 보낸다. 같은 회차는 한 번만.
- * - 사용: 설치된 11시 트리거가 호출. 수동 실행도 실제 발송이므로 주의.
- * - 영향: 실제 PM DM·업무/발송 이력 변경, 회차가 끝나면 관리자 요약 DM 1통.
+ * 09-01. 정기 DM 회차 [트리거가 호출 — 수동 실행도 실제 발송]
+ * - sendScheduledBriefing11(): 10:30 오전 DM(업무·오늘 회의·Slack·점심 추천·한마디).
+ * - sendScheduledBriefing14(): 14:00 오후 업데이트(오전 이후 새 업무·Slack만, 없으면 한 줄 인사).
+ * - sendScheduledBriefing17(): 17:00 마무리 DM(업무·남은/내일 회의·Slack·내일 날씨·한마디).
+ * - 쉬는 날(주말·공휴일·회사 휴무일, 28번 파일)은 건너뛴다. 연결 PM 모드면 20번 파일로 8명씩 이어 보낸다.
+ * - 같은 날짜·회차는 PM마다 한 번만. 회차가 끝나면 관리자 요약 DM 1통(23번 파일).
  *
- * 09-02. 17시 자동 DM [직접 실행]
- * - 함수: sendScheduledBriefing17()
- * - 기능: 평일 17시 회차를 시작한다(오늘 남은·내일 회의, 점심 추천 없음). 대상·이어 보내기는 11시와 같다.
- * - 사용: 설치된 17시 트리거가 호출. 수동 실행도 실제 발송이므로 주의.
- * - 영향: 실제 PM DM·업무/발송 이력 변경, 회차가 끝나면 관리자 요약 DM 1통.
+ * 09-02. 정기 DM 트리거 설치 [직접 실행]
+ * - installBriefingTriggers(): 위 3개 트리거를 현재 계정에 다시 만든다(같은 이름은 지우고 1개씩). 지금 DM 없음.
+ *   Apps Script는 정각을 보장하지 않는다(지정 시각 ±15분).
  *
- * 09-03. 정기 DM 설치 [직접 실행]
- * - 함수: installPersonalBriefingTriggers()
- * - 기능: 본인만 활성인지 확인하고 기존 동명 트리거를 한국 시간 11시·17시 부근 실행으로 교체한다.
- * - 사용: 처음 설치할 때만. 여러 PM이 발송 TRUE인 지금은 실행되지 않는다(트리거는 이미 설치됨). 정각 보장 아님.
- * - 영향: 동명11시/17시 트리거 교체. 이후 자동 DM 시작. 지금 DM 없음.
+ * 09-03. 정기 DM 트리거 해제 [직접 실행]
+ * - removePersonalBriefingTriggers(): 현재 계정의 정기 DM 트리거 3개를 지운다. DM 없음.
  *
- * 09-04. 정기 DM 해제 [직접 실행]
- * - 함수: removePersonalBriefingTriggers()
- * - 기능: 11시·17시 발송 함수의 현재 계정 트리거만 제거한다.
- * - 사용: 정기 DM을 중지할 때 실행.
- * - 영향: 현재계정11시/17시 트리거만 제거. DM 없음.
+ * 09-04. Slack 미리 수집 트리거 [직접 실행]
+ * - installBbpmCollectTrigger(): 10분마다 깨어나는 수집 트리거 1개 설치(있으면 그대로). 실제 수집은
+ *   09:45~10:45 · 13:30~14:15 · 16:00~17:15에만 한다(03번 파일). DM 없음.
+ * - removeBbpmCollectTrigger(): 수집 트리거 제거. DM 없음.
  *
- * 09-05. 자동 수집 설치 [직접 실행]
- * - 함수: installBbpmCollectTrigger()
- * - 기능: 없으면10분 주기 수집을 설치하고 기존1개는 보존하며 중복이면 중지한다.
- * - 사용: 수집 트리거가 없을 때 실행. 기존1개면 보존.
- * - 영향: 현재계정10분주기 수집 트리거 설치 가능. DM 없음.
+ * 09-05. 자동화 상태 확인 [직접 실행]
+ * - previewBriefingAutomationStatus(): 트리거 4개(수집·10:30·14:00·17:00) 개수, 최근 수집, Slack 자료 최신성 조회만.
  *
- * 09-06. 자동화 상태 확인 [직접 실행]
- * - 함수: previewBriefingAutomationStatus()
- * - 기능: 현재 계정 트리거 수·설정·수집 호출/결과·완료본 최신성을 조회한다.
- * - 사용: 자동화 설치·최근 수집 상태·최신성 점검 시 실행.
- * - 영향: 현재계정 상태 조회만. DM·설정/시트/트리거 변경 없음.
- *
- * 09-07. 자동 수집 해제 [직접 실행]
- * - 함수: removeBbpmCollectTrigger()
- * - 기능: 수집 함수의 현재 계정 트리거만 제거한다.
- * - 사용: 자동 수집을 중지할 때 실행.
- * - 영향: 현재계정 수집 트리거만 제거. DM 없음.
- *
- * 09-08. 평일 판단 [내부]
- * - isBriefingWeekday_(now): 한국 시간 기준 월~금이면 true. 공휴일은 판단하지 않는다.
- * - 사용: 11시·17시 정기 DM과 수집 트리거가 실행 초기에 호출. 수동 시험 함수는 영향 없음.
- * - 영향: 계산만. 외부 조회·저장·DM 없음.
- *
- * - 개인 연결 확대: ENABLE_CONNECTED_PM_SEND=true일 때만 개인 연결 완료 PM으로 정기 발송 대상을 바꾼다.
- *   ENABLE_SELF_CALENDAR_PIPELINE 및 BOT_USERS 발송 TRUE도 필요. 미설정 시 기존 본인 시험 유지.
- *   installPersonalBriefingTriggers는 본인 시험 설치용이다. 확대 전환 시 기존 11시/17시 트리거를 재사용한다.
- * - 연결 PM 확대 모드는 20번 파일의 회차별 이어 보내기를 사용한다. 기존 본인 모드는 유지한다.
+ * 09-06. 평일 판단 [내부]
+ * - isBriefingWeekday_(now): 한국 시간 월~금이면 true. 공휴일·회사 휴무일은 28번 briefingDayOff_가 판단한다.
  */
 
-/** 한국 시간의 오전/오후 회차. 정각 보장이 아닌 실제 조회 시각도 표시한다. */
+/** 정기 DM 회차(트리거가 호출). 내부 이름 11:00 = 10:30 실행. */
 function sendScheduledBriefing11() { sendScheduledBriefing_('11:00'); }
+function sendScheduledBriefing14() { sendScheduledBriefing_('14:00'); }
 function sendScheduledBriefing17() { sendScheduledBriefing_('17:00'); }
 
+// 정기 DM 트리거 3개(10:30 오전 · 14:00 오후 업데이트 · 17:00 마무리)를 현재 계정에 다시 만든다.
+// Apps Script는 정각을 보장하지 않는다(지정 시각 ±15분). 기존 같은 이름 트리거는 지우고 새로 만든다. 지금 DM 없음.
+function installBriefingTriggers() {
+  const plan = [['sendScheduledBriefing11', 10, 30], ['sendScheduledBriefing14', 14, 0], ['sendScheduledBriefing17', 17, 0]];
+  const names = plan.map(p => p[0]);
+  ScriptApp.getProjectTriggers().filter(trigger => names.includes(trigger.getHandlerFunction()))
+    .forEach(trigger => ScriptApp.deleteTrigger(trigger));
+  plan.forEach(([handler, hour, minute]) => ScriptApp.newTrigger(handler).timeBased()
+    .atHour(hour).nearMinute(minute).everyDays(1).inTimezone(BRIEFING.timezone).create());
+  console.log('정기 DM 트리거 설치: 10:30 · 14:00 · 17:00 부근 (각 1개) | 지금 Slack 발송 없음');
+}
+
 function sendScheduledBriefing_(slot) {
-  if (!isBriefingWeekday_(new Date())) { console.log(slot + ' 정기 DM 건너뜀 · 주말 | Slack 발송 없음'); return; }
+  const dayOff = briefingDayOff_(new Date());
+  if (dayOff) { console.log(briefingSlotLabel_(slot) + ' 정기 DM 건너뜀 · ' + dayOff + ' | Slack 발송 없음'); return; }
   const props = PropertiesService.getScriptProperties();
   const connectedMode = props.getProperty('ENABLE_CONNECTED_PM_SEND') === 'true';
   try {
@@ -79,50 +66,22 @@ function sendScheduledBriefing_(slot) {
   }
 }
 
-// 정기 DM은 평일에만 보낸다. 공휴일은 따로 판단하지 않는다.
+// 월~금 판단만. 공휴일·회사 휴무일은 briefingDayOff_(28번)가 이 함수 위에서 판단한다.
 function isBriefingWeekday_(now) {
   const day = Utilities.formatDate(now, BRIEFING.timezone, 'yyyy-MM-dd');
   const weekday = new Date(Date.parse(day + 'T00:00:00Z')).getUTCDay();
   return weekday !== 0 && weekday !== 6;
 }
 
-// 현재 승인된 본인 시험 대상만 자동 발송한다. 다른 PM 확대는 별도 운영 전환 필요.
-function installPersonalBriefingTriggers() {
-  const props = PropertiesService.getScriptProperties();
-  if (props.getProperty('ENABLE_PM_SEND') !== 'true' ||
-      props.getProperty('ENABLE_SLACK_MENTION_READ') !== 'true') {
-    throw new Error('읽기·발송 허용 설정을 먼저 확인하세요.');
-  }
-  const bot = SpreadsheetApp.openById(requiredProperty_(props, 'BOT_SPREADSHEET_ID'));
-  const rows = readBotRows_(requireBotSheet_(bot, BOT_WORKBOOK.usersTab,
-    BOT_WORKBOOK.userHeaders), BOT_WORKBOOK.userHeaders.length);
-  const pilot = findPilotRecipient_(rows);
-  const enabled = rows.filter(row => row[2] === true);
-  if (!pilot || !pilot.enabled || enabled.length !== 1 || String(enabled[0][1]).trim() !== pilot.id) {
-    throw new Error('정기 시험은 본인만 발송 TRUE로 설정해야 합니다.');
-  }
-  const handlers = ['sendScheduledBriefing11', 'sendScheduledBriefing17'];
-  ScriptApp.getProjectTriggers().filter(trigger => handlers.includes(trigger.getHandlerFunction()))
-    .forEach(trigger => ScriptApp.deleteTrigger(trigger));
-  try {
-    handlers.forEach((handler, index) => ScriptApp.newTrigger(handler).timeBased()
-      .atHour(index ? 17 : 11).nearMinute(0).everyDays(1).inTimezone(BRIEFING.timezone).create());
-  } catch (error) {
-    ScriptApp.getProjectTriggers().filter(trigger => handlers.includes(trigger.getHandlerFunction()))
-      .forEach(trigger => ScriptApp.deleteTrigger(trigger));
-    throw error;
-  }
-  console.log('본인 시험 트리거 설치: 한국 시간 11시·17시 부근 | 지금 Slack 발송 없음');
-}
-
+// 정기 DM 트리거 3개를 현재 계정에서 지운다. 다시 켜려면 installBriefingTriggers.
 function removePersonalBriefingTriggers() {
-  const handlers = ['sendScheduledBriefing11', 'sendScheduledBriefing17'];
+  const handlers = ['sendScheduledBriefing11', 'sendScheduledBriefing14', 'sendScheduledBriefing17'];
   ScriptApp.getProjectTriggers().filter(trigger => handlers.includes(trigger.getHandlerFunction()))
     .forEach(trigger => ScriptApp.deleteTrigger(trigger));
-  console.log('본인 시험 정기 트리거 제거 | Slack 발송 없음');
+  console.log('정기 DM 트리거(10:30·14:00·17:00) 제거 | Slack 발송 없음');
 }
 
-// 읽기 전용 미리 수집 트리거. 10분마다 깨어나되 10:00~11:15·16:00~17:15에만 수집한다.
+// 읽기 전용 미리 수집 트리거. 10분마다 깨어나되 09:45~10:45·13:30~14:15·16:00~17:15에만 수집한다.
 function installBbpmCollectTrigger() {
   const props = PropertiesService.getScriptProperties();
   if (props.getProperty('ENABLE_SLACK_MENTION_READ') !== 'true' ||
@@ -136,7 +95,7 @@ function installBbpmCollectTrigger() {
   }
   if (existing.length) throw new Error('BBPM 수집 트리거 중복 또는 유형 오류. 트리거 화면에서 확인하세요.');
   ScriptApp.newTrigger('collectBbpmSnapshot').timeBased().everyMinutes(10).create();
-  console.log('BBPM 미리 수집 트리거 설치: 10분마다, 10:00~11:15·16:00~17:15에만 수집 | Slack 발송 없음');
+  console.log('BBPM 미리 수집 트리거 설치: 10분마다, 09:45~10:45·13:30~14:15·16:00~17:15에만 수집 | Slack 발송 없음');
 }
 
 /** 현재 실행 계정이 설치한 트리거와 Slack 수집 상태를 읽기만 한다. */
@@ -144,8 +103,10 @@ function previewBriefingAutomationStatus() {
   const props = PropertiesService.getScriptProperties();
   const now = new Date();
   const triggers = ScriptApp.getProjectTriggers();
-  ['collectBbpmSnapshot', 'sendScheduledBriefing11', 'sendScheduledBriefing17'].forEach(handler => {
-    console.log(handler + ' 트리거: ' + triggers.filter(item => item.getHandlerFunction() === handler).length + '개');
+  [['collectBbpmSnapshot', 'Slack 미리 수집(10분마다)'], ['sendScheduledBriefing11', '10:30 오전 DM'],
+    ['sendScheduledBriefing14', '14:00 오후 업데이트'], ['sendScheduledBriefing17', '17:00 마무리 DM']].forEach(([handler, label]) => {
+    const count = triggers.filter(item => item.getHandlerFunction() === handler).length;
+    console.log(label + ' 트리거: ' + count + '개' + (count === 1 ? ' ✅' : ' ⚠️ 1개여야 함 → installBriefingTriggers 확인'));
   });
   console.log('확인 범위: 현재 실행 계정이 설치한 트리거 | 다른 계정의 트리거는 표시되지 않음');
   console.log('Slack 읽기 ' + (props.getProperty('ENABLE_SLACK_MENTION_READ') === 'true' ? 'ON' : 'OFF') +
@@ -154,7 +115,7 @@ function previewBriefingAutomationStatus() {
   const stamp = value => value && Number.isFinite(Number(value)) ?
     Utilities.formatDate(new Date(Number(value)), BRIEFING.timezone, 'MM/dd HH:mm') : '기록 없음';
   console.log('최근 수집 트리거 호출: ' + stamp(props.getProperty('BBPM_COLLECT_LAST_TRIGGER_AT')) +
-    ' | 수집 시간대 10:00~11:15 / 16:00~17:15');
+    ' | 수집 시간대 09:45~10:45 / 13:30~14:15 / 16:00~17:15');
   let status;
   try { status = JSON.parse(props.getProperty('BBPM_COLLECT_STATUS') || 'null'); } catch (ignored) {}
   console.log('최근 수집 실행: ' + (status ? stamp(status.at) + ' | ' +

@@ -66,7 +66,7 @@ for(const [index,value] of [[4,'<@U0000000002>'],[8,'javascript:alert(1)'],[9,'2
   const row=[...rows[0]];row[index]=value;assert.throws(()=>ctx.validateLunchRestaurantRows_([row]),/형식/);
 }
 const pending=[...rows[0]];pending[10]='pending';
-assert.equal(ctx.pickLunchRecommendation_(props,{id:'U0000000003'},day,'11:00',ctx.validateLunchRestaurantRows_([pending])),null,'enabling pending rows cannot bypass verification');
+assert.equal(ctx.pickLunchRecommendation_(props,{id:'U0000000004'},day,'11:00',ctx.validateLunchRestaurantRows_([pending])),null,'enabling pending rows cannot bypass verification');
 ctx.assertBotHeaders_=()=>{};ctx.readBotRows_=s=>s.rows;
 assert.equal(ctx.readLunchRestaurantCatalog_({getSheetByName:()=>null}).length,75);
 assert.equal(ctx.readLunchRestaurantCatalog_({getSheetByName:()=>({rows:[],getLastRow:()=>1})}).length,0,'empty sheet does not resurrect defaults');

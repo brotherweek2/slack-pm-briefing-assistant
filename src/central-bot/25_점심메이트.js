@@ -1,5 +1,5 @@
 /**
- * 25. 점심 메이트 — 11시 점심 추천에서 "같은 식당을 추천받은 동료"를 서로 보여 준다.
+ * 25. 점심 메이트 — 10:30 점심 추천에서 "같은 식당을 추천받은 동료"를 서로 보여 준다.
  * - 켜고 끄기는 PM이 DM의 버튼으로 직접 한다(관리자 설정 없음). 기본값은 꺼짐: 켠 사람끼리만 이름이 보인다.
  * - 같은 식당이 실제로 겹치도록, 켠 사람들에게는 날마다 "오늘의 메이트 식당"(3명당 1곳)을 고정해 나눠 준다.
  *   켜지 않은 PM의 추천 방식은 그대로다.
@@ -85,11 +85,12 @@ function handleSlackInteraction_(e) {
     const payload = JSON.parse(String(e.parameter.payload || '').slice(0, 50000));
     if (!expected || payload.token !== expected || payload.type !== 'block_actions') return ok();
     const action = (payload.actions || [])[0] || {};
+    if (String(action.action_id || '').startsWith('feedback_')) { handleFeedbackAction_(payload, action, props); return ok(); }
     const userId = String(payload.user && payload.user.id || '');
     if (action.action_id !== LUNCH_MATE.actionId || !['on','off'].includes(action.value) || !/^[UW][A-Z0-9]{8,}$/.test(userId)) return ok();
     // 누른 사람 본인의 설정만 바꾼다(다른 사람 것을 바꿀 수 없음).
     props.setProperty(LUNCH_MATE.prefix + userId, action.value);
-    const text = action.value === 'on' ? '🤝 점심 메이트를 켰어요. 다음 11시 추천부터 같은 식당을 추천받은 동료가 보여요.' :
+    const text = action.value === 'on' ? '🤝 점심 메이트를 켰어요. 다음 10:30 점심 추천부터 같은 식당을 추천받은 동료가 보여요.' :
       '점심 메이트를 껐어요. 다음 추천부터 내 이름이 보이지 않아요.';
     if (/^https:\/\/hooks\.slack\.com\//.test(String(payload.response_url || ''))) {
       UrlFetchApp.fetch(payload.response_url, {method:'post', contentType:'application/json', muteHttpExceptions:true,

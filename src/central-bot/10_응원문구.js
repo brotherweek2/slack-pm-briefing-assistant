@@ -177,7 +177,7 @@ function previewBriefingPhraseSamples() {
   const catalog = readBriefingPhraseCatalog_(bot);
   ['11:00','17:00'].forEach(slot => {
     const active = catalog.filter(item => item.slot === slot && item.enabled);
-    console.log(slot + ' 문구 ' + active.length + '개 | 핵심 문장 ' + new Set(active.map(item => item.family)).size + '종');
+    console.log(briefingSlotLabel_(slot) + ' 문구 ' + active.length + '개 | 핵심 문장 ' + new Set(active.map(item => item.family)).size + '종');
     [...new Set(active.map(item => item.theme))].slice(0,5).forEach(theme => {
       const sample = active.find(item => item.theme === theme);
       console.log('• ' + sample.text);

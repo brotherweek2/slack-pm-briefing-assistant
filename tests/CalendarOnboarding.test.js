@@ -28,7 +28,7 @@ function fixture(previouslyEnabled=false){
   Session:{getEffectiveUser:()=>({getEmail:()=> 'admin@example.test'})},
   LockService:{getUserLock:()=>({tryLock:()=>true,releaseLock:()=>{}})},
   ContentService:{MimeType:{JSON:'json'},createTextOutput:text=>({setMimeType:()=>JSON.parse(text)})},
-  ScriptApp:{getProjectTriggers:()=>['sendScheduledBriefing11','sendScheduledBriefing17'].map(name=>({getHandlerFunction:()=>name}))},
+  ScriptApp:{getProjectTriggers:()=>['sendScheduledBriefing11','sendScheduledBriefing14','sendScheduledBriefing17'].map(name=>({getHandlerFunction:()=>name}))},
   UrlFetchApp:{fetch:(_url,options)=>{const payload=JSON.parse(options.payload);messages.push(payload);
     if(loseNotice&&payload.text.startsWith('✅')){loseNotice=false;throw Error('accepted but response lost');}
     return {getResponseCode:()=>200,getContentText:()=>'{"ok":true}'};}}});

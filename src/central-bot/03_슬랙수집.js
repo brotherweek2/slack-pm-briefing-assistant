@@ -500,7 +500,7 @@ function classifySlackMentionMessages_(messages, recipients, members, groupId, o
  */
 const BBPM_SNAPSHOT = Object.freeze({
   tabs: { A: 'BOT_SLACK_SNAPSHOT_A', B: 'BOT_SLACK_SNAPSHOT_B' }, slotKey: 'BBPM_SNAPSHOT_SLOT',
-  maxAgeMinutes: 60, skipIfNewerMinutes: 25, windows: [['10:00', '11:15'], ['16:00', '17:15']],
+  maxAgeMinutes: 60, skipIfNewerMinutes: 25, windows: [['09:45', '10:45'], ['13:30', '14:15'], ['16:00', '17:15']],
 });
 
 function collectBbpmSnapshot(e) {
@@ -509,8 +509,7 @@ function collectBbpmSnapshot(e) {
   if (e) props.setProperty('BBPM_COLLECT_LAST_TRIGGER_AT', String(now.getTime()));
   if (e) {
     if (!isBbpmCollectWindow_(now)) return;
-    // 주말에는 정기 DM이 없으므로 미리 수집도 쉰다. 편집기 수동 실행은 그대로 수집한다.
-    if (!isBriefingWeekday_(now)) return;
+    if (briefingDayOff_(now)) return; // 주말·공휴일·회사 휴무일은 정기 DM이 없으므로 미리 수집도 쉰다(편집기 수동 실행은 수집).
     const bot = SpreadsheetApp.openById(requiredProperty_(props, 'BOT_SPREADSHEET_ID'));
     const saved = readBbpmSnapshot_(props, bot);
     if (saved && now.getTime() / 1000 - saved.meta.newest < BBPM_SNAPSHOT.skipIfNewerMinutes * 60) return;

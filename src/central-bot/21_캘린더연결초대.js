@@ -34,7 +34,7 @@ function calendarInviteSetup_(props) {
       props.getProperty('ENABLE_CALENDAR_SELF_ENROLLMENT')!=='true') throw new Error('개인 일정·자기 연결·정기 발송 모드를 먼저 준비하세요.');
   if((props.getProperty('CONNECTOR_SIGNING_KEY')||'').length<43) throw new Error('연결 앱과 중앙의 서명키 설정을 먼저 확인하세요.');
   const handlers=ScriptApp.getProjectTriggers().map(t=>t.getHandlerFunction());
-  if(['sendScheduledBriefing11','sendScheduledBriefing17'].some(name=>handlers.filter(h=>h===name).length!==1)) throw new Error('현재 실행 계정의 11시/17시 정기 트리거를 확인하세요.');
+  if(['sendScheduledBriefing11','sendScheduledBriefing14','sendScheduledBriefing17'].some(name=>handlers.filter(h=>h===name).length!==1)) throw new Error('현재 실행 계정의 정기 DM 트리거(10:30·14:00·17:00)를 확인하세요. 09_자동실행.gs → installBriefingTriggers');
   const registry=selfCalendarRegistry_(props);
   const users=SpreadsheetApp.openById(requiredProperty_(props,'BOT_SPREADSHEET_ID')).getSheetByName(BOT_WORKBOOK.usersTab);
   if(users&&selfCalendarUsesConnectColumn_(users)) {
@@ -58,7 +58,7 @@ function calendarInviteMessage_(route,url) {
     '<'+url+'|회사 Google 계정으로 내 일정 연결>\n\n'+
     '개인 캘린더 · PM Team Schedule · PM Review & Delivery · 대한민국의 휴일을 읽습니다.\n'+
     '본인 계정으로 Google 권한을 승인한 뒤 화면에서 동의하고 연결을 완료해주세요.\n'+
-    '연결되면 확인 DM을 보내고, 11시·17시 부근 개인 업무 브리핑에 일정을 포함합니다. Google Tasks는 읽지 않습니다.\n'+
+    '연결되면 확인 DM을 보내고, 평일 10:30·14:00·17:00 부근 개인 업무 브리핑에 내 회의를 함께 넣어 드립니다. Google Tasks는 읽지 않습니다.\n'+
     CALENDAR_LINK_TIP;
 }
 function previewCalendarConnectionInvites() {
@@ -149,7 +149,7 @@ function calendarOnboardingNotice_(props,route,record,state) {
   props.setProperty(calendarInviteKey_(route),JSON.stringify(record));
   const sources=state.sources||[],ok=sources.filter(source=>source.status==='ok').length;
   const message='✅ *'+escapeSlack_(route.pm)+'* 님, 개인 일정 브리핑 연결이 완료됐습니다.\n'+
-    '11시·17시 부근 개인 업무 브리핑에 일정을 포함하도록 설정했습니다.\n'+
+    '평일 10:30(오전) · 14:00(새 소식만) · 17:00(마무리) 부근에 업무·회의·Slack 요청을 모아 DM으로 보내 드립니다.\n'+
     '캘린더 조회 '+ok+'/4'+(ok<4?' · 일부 캘린더의 구독·읽기 권한은 연결 화면에서 확인해주세요.':'');
   try {
     postSlackDm_(requiredProperty_(props,'SLACK_BOT_TOKEN'),route.slackId,message,slot);

@@ -96,7 +96,7 @@ const crypto = require('node:crypto');
 Object.assign(props, {CALENDAR_ONBOARDING_READY: 'true', ENABLE_PM_SEND: 'true', ENABLE_CONNECTED_PM_SEND: 'true',
   ENABLE_SELF_CALENDAR_PIPELINE: 'true', ENABLE_CALENDAR_BRIEFING: 'true', ENABLE_CALENDAR_SELF_ENROLLMENT: 'true',
   CONNECTOR_SIGNING_KEY: 'k'.repeat(43), CALENDAR_INVITE_PM_NAMES: JSON.stringify(['PM B'])});
-ctx.ScriptApp = {getProjectTriggers: () => ['sendScheduledBriefing11', 'sendScheduledBriefing17'].map(h => ({getHandlerFunction: () => h}))};
+ctx.ScriptApp = {getProjectTriggers: () => ['sendScheduledBriefing11', 'sendScheduledBriefing14', 'sendScheduledBriefing17'].map(h => ({getHandlerFunction: () => h}))};
 ctx.Utilities = {formatDate: kst, DigestAlgorithm: {SHA_256: 's'}, computeDigest: (_a, t) => [...crypto.createHash('sha256').update(t).digest()],
   base64EncodeWebSafe: b => Buffer.from(b).toString('base64url')};
 let invite = ctx.calendarInviteSetup_(propsApi);
