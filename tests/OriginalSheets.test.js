@@ -41,6 +41,9 @@ let f = fixture();
 assert.throws(() => f.ctx.previewOriginalSheetConnection(), /원본 시트 주소를 먼저/);
 f = fixture({ORIGINAL_HACV_SPREADSHEET_ID: 'not a sheet'});
 assert.throws(() => f.ctx.previewOriginalSheetConnection(), /형식이 아닙니다/);
+assert.throws(() => f.ctx.previewOriginalSheetConnection(), /\(값 11자, 주소 아님\)/);
+assert.equal(f.ctx.sheetIdFromValue_('https://docs.google.com/spreadsheets/u/0/d/' + ORIG + '/edit'), ORIG);
+assert.equal(f.ctx.sheetIdFromValue_('https://drive.google.com/open?id=' + ORIG), ORIG);
 f = fixture({ORIGINAL_HACV_SPREADSHEET_ID: 'bot_sheet_000000000000000000000'});
 assert.throws(() => f.ctx.previewOriginalSheetConnection(), /봇 시트와 같습니다/);
 
@@ -58,6 +61,28 @@ assert.match(out, /• PM D: 0 → 1/);
 assert.match(out, /새로 보이는 담당 탭: PM D/);
 assert.deepEqual([...f.values], [...before], 'preview changes no properties');
 assert.ok(f.opened.includes(ORIG) && f.opened.includes(ORIG_PM));
+
+// 2-1) 내 업무 목록: 원본 기준 시범 PM 업무만 한 줄씩, 속성 변경 없음.
+assert.match(out, /원본 담당 탭: PM A, PM D/);
+f.logs.length = 0;
+Object.assign(f.ctx, {requiredProperty_: () => 'bot', requireBotSheet_: () => ({}), readBotRows_: () => [], getPilotPmName_: () => 'PM D'});
+f.ctx.collectPmReviewTasks_ = s => [['PM_REVIEW|5', 'PM D', '', 'ko_KR-en_US', '1차 검수', '검수 Agent 완료', '', '2026-10-30', '', 'PM Review', '', '5']]
+  .concat(/^orig/.test(s.id) ? [] : [['PM_REVIEW|9', 'PM D']]);
+f.ctx.previewOriginalMyTasks();
+assert.equal(f.logs[0], '[원본 기준 내 업무] PM D · 1건 · 읽기만, 변경·발송 없음\n• 1차 검수 · ko_KR-en_US · 검수 Agent 완료 · 2026-10-30 · PM Review 5행');
+assert.deepEqual([...f.values], [...before]);
+
+// 2-2) 담당 탭이 없는 사람(언어쌍 PM 아님)은 예비 작업자 검토·헤즈업을 받지 않고 PM Review는 그대로 받는다.
+f = fixture({ORIGINAL_HACV_SPREADSHEET_ID: ORIG});
+f.ctx.buildHaCvBotTasks_ = () => [['HACV_REVIEW|a', 'PM A'], ['HACV_REVIEW|x', 'PM X']];
+f.ctx.buildHaCvHeadsUpTasks_ = () => [['HACV_HEADSUP|x', 'PM X']];
+f.ctx.collectPmReviewTasks_ = () => [['PM_REVIEW|x', 'PM X']];
+const parts = f.ctx.collectAllWorkTasks_(f.ctx.SpreadsheetApp.openById(ORIG), {}, {}, new Date());
+assert.deepEqual(parts.detected.map(row => row[0]), ['HACV_REVIEW|a']);
+assert.deepEqual(parts.notPairPm.map(row => row[0]), ['HACV_REVIEW|x', 'HACV_HEADSUP|x']);
+assert.deepEqual(parts.pmReviews.map(row => row[1]), ['PM X']);
+f.ctx.previewOriginalSheetConnection();
+assert.match(f.logs.join('\n'), /담당 탭 없음\(언어쌍 PM 아님\) → 언어쌍 업무 2건 제외: PM X/);
 
 // 3) 원본을 못 열면(권한 없음) 미리보기·전환 모두 멈추고 속성은 그대로다.
 f = fixture({ORIGINAL_HACV_SPREADSHEET_ID: 'missing_000000000000000000000000'});

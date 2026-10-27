@@ -143,12 +143,16 @@ function refreshBotTasks_({ bot, sourceId }) {
   if ([sourceId, bot.getId()].includes(pmReviewId) || [sourceId, bot.getId()].includes(testId)) {
     throw new Error('추가 업무 원천 ID가 HA-CV 원천 또는 브리핑용 시트 ID와 같습니다.');
   }
-  const {collected, headsUp, detected, pmDashboards, upcoming, abuse, pmReviews, testReviews} = collectAllWorkTasks_(
+  const {collected, headsUp, detected, notPairPm, pmDashboards, upcoming, abuse, pmReviews, testReviews} = collectAllWorkTasks_(
     SpreadsheetApp.openById(sourceId), SpreadsheetApp.openById(pmReviewId), SpreadsheetApp.openById(testId), new Date());
   syncBotUsers_(users, Object.keys(collected.byPm)
     .concat(Object.keys(headsUp.byPm), pmDashboards.map(item => item.pm),
       abuse.concat(pmReviews, testReviews).map(row => row[1])));
   syncBotTasks_(tasks, detected.concat(upcoming, abuse, pmReviews, testReviews));
+  if (notPairPm.length) {
+    console.log('담당 탭 없음(언어쌍 PM 아님)으로 언어쌍 업무 제외: ' + notPairPm.length + '건 (' +
+      [...new Set(notPairPm.map(row => row[1]))].join(', ') + ')');
+  }
   if (collected.unassigned.length) {
     console.warn('담당 PM 미확정으로 BOT_TASKS에서 제외: ' + collected.unassigned.join(', '));
   }
@@ -369,17 +373,21 @@ function syncBotTasks_(sheet, detected) {
 function collectAllWorkTasks_(source, pmReviewSource, testSource, now) {
   const collected = collectHaCvReviewCandidates_(source);
   const headsUp = collectHaCvHeadsUpCandidates_(source);
-  const detected = buildHaCvBotTasks_(collected.byPm, now)
-    .concat(buildHaCvHeadsUpTasks_(headsUp.byPm, now));
-  const day = Utilities.formatDate(now, BRIEFING.timezone, 'yyyy-MM-dd');
   const pmDashboards = collectHaCvPmDashboards_(source);
+  // HA-CV 시트에 담당 탭이 없는 사람은 언어쌍 PM이 아니다. 예비 작업자 검토·헤즈업 같은 언어쌍 업무는 빼고,
+  // PM Review·테스트지 업무만 받는다. (종료 임박·어뷰저는 담당 탭에서만 나오므로 원래 해당 없음)
+  const pairPms = new Set(pmDashboards.map(item => item.pm));
+  const pairTasks = buildHaCvBotTasks_(collected.byPm, now).concat(buildHaCvHeadsUpTasks_(headsUp.byPm, now));
+  const detected = pairTasks.filter(row => pairPms.has(String(row[1] || '').trim()));
+  const notPairPm = pairTasks.filter(row => !pairPms.has(String(row[1] || '').trim()));
+  const day = Utilities.formatDate(now, BRIEFING.timezone, 'yyyy-MM-dd');
   const upcoming = pmDashboards.flatMap(({ pm, records, gid }) =>
     buildHaCvUpcomingTasks_(pm, records, day, source.getUrl(), gid, now));
   const abuse = pmDashboards.flatMap(({ pm, records, gid }) =>
     buildHaCvAbuseTasks_(pm, records, day, source.getUrl(), gid, now));
   const pmReviews = collectPmReviewTasks_(pmReviewSource, day, now);
   const testReviews = collectTestReviewTasks_(testSource, now);
-  return {collected, headsUp, detected, pmDashboards, upcoming, abuse, pmReviews, testReviews};
+  return {collected, headsUp, detected, notPairPm, pmDashboards, upcoming, abuse, pmReviews, testReviews};
 }
 
 const ORIGINAL_SHEETS = Object.freeze([
@@ -391,8 +399,17 @@ const ORIGINAL_SHEETS = Object.freeze([
 // 시트 주소를 넣어도 ID만 꺼낸다.
 function sheetIdFromValue_(value) {
   const text = String(value || '').trim();
-  const match = text.match(/\/spreadsheets\/d\/([A-Za-z0-9_-]{20,})/) || text.match(/^([A-Za-z0-9_-]{20,})$/);
+  // /spreadsheets/u/0/d/…, drive.google.com/file/d/…, ?id=… 형태도 받는다.
+  const match = text.match(/\/d\/([A-Za-z0-9_-]{20,})/) || text.match(/[?&]id=([A-Za-z0-9_-]{20,})/) ||
+    text.match(/^([A-Za-z0-9_-]{20,})$/);
   return match ? match[1] : '';
+}
+
+// 형식 오류 안내용. 값 자체는 보이지 않고 길이·주소 종류만 알려 준다.
+function sheetValueHint_(raw) {
+  const text = String(raw || '').trim();
+  const host = (text.match(/^https?:\/\/([^\/]+)/) || [])[1];
+  return '(값 ' + text.length + '자, ' + (host ? host + ' 주소' : '주소 아님') + ')';
 }
 
 // 지금 쓰는 시트와 원본 후보. 원본 칸이 비면 지금 시트를 그대로 쓴다.
@@ -401,7 +418,8 @@ function originalSheetPlan_(props) {
     const current = props.getProperty(item.key) || (item.fallback ? BOT_WORKBOOK[item.fallback] : '');
     const raw = props.getProperty(item.original);
     const original = sheetIdFromValue_(raw);
-    if (raw && !original) throw new Error(item.label + ': ' + item.original + ' 값이 시트 주소·ID 형식이 아닙니다.');
+    if (raw && !original) throw new Error(item.label + ': ' + item.original + ' 값이 시트 주소·ID 형식이 아닙니다 ' + sheetValueHint_(raw) +
+      '. 주소의 /d/ 와 /edit 사이 ID만 BOT_SETTINGS B열에 넣고 applyBotSettings를 다시 실행하세요.');
     return {label:item.label, key:item.key, current, next:original || current, changed:!!original && original !== current};
   });
   if (!plan.some(item => item.changed)) throw new Error('ORIGINAL_..._SPREADSHEET_ID 속성에 원본 시트 주소를 먼저 넣으세요.');
@@ -421,7 +439,8 @@ function workTaskCounts_(parts) {
     byType[type] = (byType[type] || 0) + 1;
     byPm[row[1]] = (byPm[row[1]] || 0) + 1;
   });
-  return {total:rows.length, byType, byPm, pms:parts.pmDashboards.map(item => item.pm)};
+  return {total:rows.length, byType, byPm, pms:parts.pmDashboards.map(item => item.pm),
+    notPairPm:[...new Set(parts.notPairPm.map(row => row[1]))], notPairPmCount:parts.notPairPm.length};
 }
 
 function openWorkSheets_(plan, field, label) {
@@ -448,9 +467,30 @@ function previewOriginalSheetConnection() {
   lines.push('', 'PM별 (담당 탭 ' + before.pms.length + '명 → ' + after.pms.length + '명)');
   [...new Set(Object.keys(before.byPm).concat(Object.keys(after.byPm)))].sort().forEach(pm =>
     lines.push('• ' + pm + ': ' + (before.byPm[pm] || 0) + ' → ' + (after.byPm[pm] || 0)));
+  lines.push('원본 담당 탭: ' + (after.pms.join(', ') || '없음'));
+  if (after.notPairPmCount) lines.push('담당 탭 없음(언어쌍 PM 아님) → 언어쌍 업무 ' + after.notPairPmCount + '건 제외: ' +
+    after.notPairPm.join(', ') + ' (PM Review·테스트지 업무는 그대로)');
   const added = after.pms.filter(pm => !before.pms.includes(pm));
   if (added.length) lines.push('새로 보이는 담당 탭: ' + added.join(', ') + ' (전환 후 BOT_USERS에 발송 FALSE로 추가됨, 켜기 전엔 DM 없음)');
-  lines.push('', '👉 숫자가 원본 시트에서 보이는 업무와 맞으면 switchToOriginalSheets 를 실행하세요.');
+  lines.push('', '👉 숫자가 원본 시트에서 보이는 업무와 맞으면 switchToOriginalSheets 를 실행하세요.',
+    '   내 업무를 한 건씩 보려면 previewOriginalMyTasks 를 실행하세요.');
+  console.log(lines.join('\n'));
+}
+
+// 원본 기준 내(시범 PM) 업무를 한 건씩 보여 준다. 읽기만 한다.
+function previewOriginalMyTasks() {
+  const props = PropertiesService.getScriptProperties();
+  const bot = SpreadsheetApp.openById(requiredProperty_(props, 'BOT_SPREADSHEET_ID'));
+  const pm = getPilotPmName_(readBotRows_(requireBotSheet_(bot, BOT_WORKBOOK.usersTab, BOT_WORKBOOK.userHeaders),
+    BOT_WORKBOOK.userHeaders.length));
+  const parts = collectAllWorkTasks_(...openWorkSheets_(originalSheetPlan_(props), 'next', '원본'), new Date());
+  const rows = parts.detected.concat(parts.upcoming, parts.abuse, parts.pmReviews, parts.testReviews)
+    .filter(row => String(row[1] || '').trim() === pm);
+  const lines = ['[원본 기준 내 업무] ' + pm + ' · ' + rows.length + '건 · 읽기만, 변경·발송 없음'];
+  // 종류 · 언어쌍 · 상태 · 기한 · 원본 탭과 행
+  rows.forEach(row => lines.push('• ' + [row[4], row[3], row[5], row[7] || '기한 없음', row[9] + ' ' + row[11] + (/^\d/.test(String(row[11])) ? '행' : '')]
+    .map(value => String(value || '').trim()).filter(Boolean).join(' · ')));
+  if (!rows.length) lines.push('• 없음');
   console.log(lines.join('\n'));
 }
 

@@ -65,22 +65,32 @@ const reviewRow = (status, deadline, reviewer = '홍길동님') => {
   row[6] = status; row[9] = reviewer; row[10] = deadline;
   return row;
 };
-const reviewRows = [reviewRow('검수 AGENT 완료', '2026-10-10'),
+const reviewRows = [reviewRow('검수 Agent 완료', '2026-10-10'), // 원본 표기
   reviewRow('1차 검수중', '2026-10-07'),
   reviewRow('검수 AGENT 완료', '2026-10-06'),
   reviewRow('1차 검수 완료', '2026-10-10'),
   reviewRow('검수 AGENT 완료', 'TBD'),
   reviewRow('파일 변환 완료', '2026-10-10'),
   reviewRow('검수 AGENT 완료', '2026-10-20')];
-const reviewSheet = {
-  getLastRow: () => reviewRows.length + 3,
+// 시트 흉내: grid의 1행이 시트 1행. getRange(행, 열, 높이, 너비)는 빈칸을 ''로 채운다.
+const gridSheet = grid => ({
+  getLastRow: () => grid.length,
   getSheetId: () => 900,
-  getRange: row => ({ getDisplayValues: () => row === 3 ? [reviewHeader] : reviewRows }),
-};
-const reviewSource = { getSheetByName: name => name === 'PM Review' ? reviewSheet : null,
+  getRange: (row, col, height, width) => ({ getDisplayValues: () => Array.from({length: height}, (_, i) =>
+    Array.from({length: width}, (_, j) => (grid[row - 1 + i] || [])[col - 1 + j] || '')) }),
+});
+const reviewSource = { getSheetByName: name => name === 'PM Review' ? gridSheet([[], [], reviewHeader, ...reviewRows]) : null,
   getUrl: () => 'https://docs.google.com/spreadsheets/d/review/edit' };
 const collectReview = vm.runInContext('collectPmReviewTasks_', context);
 const reviewTasks = collectReview(reviewSource, '2026-10-07', now);
+// 원본 모양: 1행 묶음 제목, 2행 머리글, J열에 "1차 검수 시작 예정일"이 끼어 담당자 K·기한 L.
+const shift = row => row.slice(0, 9).concat([row === reviewHeader ? '1차 검수\n시작 예정일' : '2026-10-01'], row.slice(9));
+const originalTasks = collectReview({ getSheetByName: () => gridSheet([['327', '묶음 제목'], shift(reviewHeader), ...reviewRows.map(shift)]),
+  getUrl: () => 'https://docs.google.com/spreadsheets/d/review/edit' }, '2026-10-07', now);
+assert.deepEqual(originalTasks.map(row => [row[1], row[7]]), reviewTasks.map(row => [row[1], row[7]]));
+assert.match(originalTasks[0][10], /range=K3:L3/);
+assert.equal(originalTasks[0][0], 'PM_REVIEW|3');
+assert.throws(() => collectReview({ getSheetByName: () => gridSheet([['언어쌍', 'Status']]) }, '2026-10-07', now), /헤더가 예상과 다릅니다/);
 assert.equal(reviewTasks.length, 5, 'all unfinished review tasks appear regardless of deadline distance');
 assert.equal(reviewTasks[4][7], '2026-10-20', 'future unfinished review remains visible');
 assert.equal(reviewTasks[0][1], '홍길동');

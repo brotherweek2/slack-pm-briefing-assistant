@@ -72,6 +72,12 @@ const collectHeadsUp = vm.runInContext('collectHaCvHeadsUpCandidates_', context)
 const result = collect(spreadsheet);
 assert.equal(result.byPm['PM A']['en_US-ja_JP'].length, 1);
 assert.equal(result.unassigned.length, 1);
+// 원본은 D열 이름이 "(현) 담당자"다. 같은 결과를 내야 한다.
+hubRows[1][3] = '(현) 담당자';
+assert.equal(collect(spreadsheet).byPm['PM A']['en_US-ja_JP'].length, 1);
+hubRows[1][3] = '담당';
+assert.throws(() => collect(spreadsheet), /실제: "투입 언어쌍" \/ "담당" \//);
+hubRows[1][3] = '(기존) 담당자';
 const headsUp = collectHeadsUp(spreadsheet);
 assert.equal(headsUp.byPm['PM A']['en_US-ja_JP'].length, 1);
 assert.equal(headsUp.byPm['PM A']['en_US-ja_JP'][0].row, 2);

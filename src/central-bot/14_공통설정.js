@@ -47,9 +47,11 @@ function collectHaCvReviewCandidates_(spreadsheet) {
   const hubTab = spreadsheet.getSheetByName(BRIEFING.hubTab);
   if (!hubTab) throw new Error('HACV_Hub 탭을 찾지 못했습니다.');
   const headers = hubTab.getRange(2, 1, 1, 6).getDisplayValues()[0];
-  if (headers[0] !== '투입 언어쌍' || headers[3] !== '(기존) 담당자' ||
+  // D열 이름은 사본 "(기존) 담당자", 원본 "(현) 담당자"다. 열 위치는 같다.
+  if (headers[0] !== '투입 언어쌍' || !['(기존) 담당자', '(현) 담당자'].includes(headers[3]) ||
       headers[5] !== '담당자 탭으로 전송 여부') {
-    throw new Error('HACV_Hub의 언어쌍·담당자·상태 헤더가 예상과 다릅니다.');
+    throw new Error('HACV_Hub의 언어쌍·담당자·상태 헤더가 예상과 다릅니다. 2행 A·D·F열 기대: 투입 언어쌍 / (현) 담당자 / ' +
+      '담당자 탭으로 전송 여부 · 실제: ' + [headers[0], headers[3], headers[5]].map(v => '"' + v + '"').join(' / '));
   }
 
   const byPm = {};

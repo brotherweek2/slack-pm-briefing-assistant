@@ -290,26 +290,35 @@ function normalizeReviewPm_(value) {
 function collectPmReviewTasks_(source, day, now) {
   const sheet = source.getSheetByName('PM Review');
   if (!sheet) throw new Error('PM Review 탭이 없습니다.');
-  const header = sheet.getRange(3, 1, 1, 11).getDisplayValues()[0];
-  if (header[1].trim() !== '언어쌍' || header[6].trim() !== 'Status' ||
-      header[9].trim() !== '1차 검수' || header[10].trim() !== '1차 검수 기한') {
-    throw new Error('PM Review의 언어쌍·상태·담당자·기한 헤더가 예상과 다릅니다.');
+  // 머리글 줄과 열을 이름으로 찾는다. 사본은 3행·J·K열, 원본은 머리글 줄이 다르고
+  // "1차 검수 시작 예정일"이 끼어 K·L열이다. 머리글은 1~5행 안에 있다.
+  const width = 30;
+  const top = sheet.getRange(1, 1, 5, width).getDisplayValues().map(row => row.map(value => String(value || '').trim()));
+  const headerIndex = top.findIndex(row => ['언어쌍', 'Status', '1차 검수', '1차 검수 기한'].every(name => row.includes(name)));
+  if (headerIndex < 0) {
+    throw new Error('PM Review의 언어쌍·상태·담당자·기한 헤더가 예상과 다릅니다. 1~5행 중 한 줄에 언어쌍 / Status / 1차 검수 / 1차 검수 기한이 있어야 합니다.');
   }
-  const height = Math.max(0, sheet.getLastRow() - 3);
+  const header = top[headerIndex], firstRow = headerIndex + 2;
+  const col = {pair:header.indexOf('언어쌍'), status:header.indexOf('Status'), pm:header.indexOf('1차 검수'),
+    due:header.indexOf('1차 검수 기한'), type:header.indexOf('데이터 타입')};
+  const height = Math.max(0, sheet.getLastRow() - firstRow + 1);
   if (!height) return [];
-  const rows = sheet.getRange(4, 1, height, 11).getDisplayValues();
-  const active = new Set(BOT_WORKBOOK.pmReviewStatuses);
+  const rows = sheet.getRange(firstRow, 1, height, width).getDisplayValues();
+  // 원본은 "검수 Agent 완료"처럼 대소문자·띄어쓰기가 다를 수 있어 둘 다 무시하고 비교한다.
+  const statusKey = value => String(value || '').replace(/\s+/g, '').toUpperCase();
+  const active = new Set(BOT_WORKBOOK.pmReviewStatuses.map(statusKey));
+  const link = [columnLetters_(col.pm + 1), columnLetters_(col.due + 1)];
   return rows.flatMap((row, index) => {
-    const status = String(row[6] || '').trim();
-    const pm = normalizeReviewPm_(row[9]);
-    const pair = String(row[1] || '').trim();
-    const due = normalizeSheetDate_(row[10]);
-    // K열의 날짜는 1차 검수 기한이다. TBD/빈칸은 아직 기한 미정이다.
+    const status = String(row[col.status] || '').trim();
+    const pm = normalizeReviewPm_(row[col.pm]);
+    const pair = String(row[col.pair] || '').trim();
+    const due = normalizeSheetDate_(row[col.due]);
+    // "1차 검수 기한" 열의 날짜가 기한이다. TBD/빈칸은 아직 기한 미정이다.
     // 검수 완료 전이라면 지난 기한도 '기한 경과'로 표시한다.
-    if (!active.has(status) || !pm || !pair) return [];
-    const rowNumber = index + 4;
+    if (!active.has(statusKey(status)) || !pm || !pair) return [];
+    const rowNumber = index + firstRow;
     const projectId = /^\d+$/.test(String(row[0] || '').trim()) ? String(row[0]).trim() : '';
-    const type = String(row[4] || '').trim();
+    const type = col.type < 0 ? '' : String(row[col.type] || '').trim();
     return [[
       'PM_REVIEW|' + rowNumber,
       pm,
@@ -320,8 +329,8 @@ function collectPmReviewTasks_(source, day, now) {
       'PM Review의 데이터 검수 파일 확인 및 1차 검수 진행',
       due,
       '',
-      'FY26Q4 PM Review',
-      source.getUrl() + '#gid=' + sheet.getSheetId() + '&range=J' + rowNumber + ':K' + rowNumber,
+      'PM Review', // 분기마다 파일이 바뀌므로 분기 이름은 넣지 않는다.
+      source.getUrl() + '#gid=' + sheet.getSheetId() + '&range=' + link[0] + rowNumber + ':' + link[1] + rowNumber,
       String(rowNumber),
       true,
       now,
@@ -335,7 +344,8 @@ function collectTestReviewTasks_(source, now) {
   const header = sheet.getRange(1, 1, 1, 8).getDisplayValues()[0];
   if (header[0].trim() !== 'Language Pair' || header[4].trim() !== '검토 완료일' ||
       header[5].trim() !== 'Status' || header[7].trim() !== '검토 PM') {
-    throw new Error('테스트 관리 탭의 언어쌍·검토 완료일·상태·검토 PM 헤더가 예상과 다릅니다.');
+    throw new Error('테스트 관리 탭의 언어쌍·검토 완료일·상태·검토 PM 헤더가 예상과 다릅니다. 1행 A·E·F·H열 기대: ' +
+      'Language Pair / 검토 완료일 / Status / 검토 PM · 실제: ' + [0, 4, 5, 7].map(i => '"' + header[i] + '"').join(' / '));
   }
   const height = Math.max(0, sheet.getLastRow() - 1);
   if (!height) return [];
