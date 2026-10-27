@@ -28,7 +28,7 @@ const sheet = rows => ({
   appendRow: row => rows.push(row),
 });
 const sheets = { BOT_USERS: sheet(users), BOT_TASKS: sheet(tasks), BOT_SEND_LOG: sheet(logRows) };
-const context = vm.createContext({
+const context = vm.createContext({ briefingLeaveRoutes_: () => [],
   console: { log: () => {} },
   BOT_WORKBOOK: {
     usersTab: 'BOT_USERS', tasksTab: 'BOT_TASKS', logTab: 'BOT_SEND_LOG',

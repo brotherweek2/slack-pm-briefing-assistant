@@ -6,7 +6,7 @@ let phase='before-send',sendFailure=false;
 const writes=[],posts=[],logs=[],sendRows=[],users=[['PM A','U0000000002',true]];
 const props={getProperty:k=>properties.get(k)||null,setProperty:(k,v)=>{writes.push({k,v,phase});properties.set(k,v);}};
 const bot={getSheetByName:()=>null};
-const ctx=vm.createContext({Date:FixedDate,console:{log:s=>logs.push(s)},BRIEFING:{timezone:'Asia/Seoul'},
+const ctx=vm.createContext({briefingLeaveRoutes_:()=>[],Date:FixedDate,console:{log:s=>logs.push(s)},BRIEFING:{timezone:'Asia/Seoul'},
   BOT_WORKBOOK:{usersTab:'BOT_USERS',userHeaders:Array(3),tasksTab:'BOT_TASKS',taskHeaders:Array(18),logTab:'BOT_SEND_LOG',logHeaders:Array(5)},
   PropertiesService:{getScriptProperties:()=>props},SpreadsheetApp:{openById:()=>bot},
   LockService:{getScriptLock:()=>({tryLock:()=>true,releaseLock:()=>{}})},

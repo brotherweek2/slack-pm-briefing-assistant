@@ -4,10 +4,14 @@
  * - cleanupBotStorage(): [직접 실행] BOT_USERS에서 빠진 PM의 Slack 발송 이력·한마디·점심 기록을 지운다. DM 없음.
  * - notifyAdminRoundSummary_(slot, info): 회차 끝(완료·일부 실패·중지)이나 시작 실패 때 자동 호출.
  *   같은 날짜·회차에는 한 번만 보낸다. 실패해도 정기 발송 결과에는 영향을 주지 않는다.
- * - buildAdminRoundSummary_: 발송 결과·확인 필요 PM과 원인·Slack 기준 시각·일정 갱신 지연 PM·저장 공간을 모은다.
+ * - buildAdminRoundSummary_: 발송 결과·확인 필요 PM과 원인·연차로 건너뛴 PM·직전 회차 누락·Slack 기준 시각·일정 갱신 지연 PM·저장 공간을 모은다.
+ *   금요일 17:00에는 이번 주 피드백(👍/👎) 집계를 붙인다.
+ * - adminPreviousRound_(props, slot, day): 직전 회차(10:30은 직전 근무일 17:00). 그 회차의 발송 기록이 하나도 없으면 경고한다.
+ * - adminWeeklyFeedbackLine_(bot, day): BOT_FEEDBACK에서 이번 주(월~오늘) 👍/👎 수와 참여 인원.
  * - adminFailureHint_(message): 오류 문구 → 사용자가 할 일 한 줄.
  * - cleanupBotProperties_(props, rows): 17:00 요약 뒤 자동 실행. 명단에 없는 Slack ID의 기록만 지운다.
- * - 한계: 트리거 자체가 권한 만료로 시작하지 못하면 이 코드도 실행되지 않는다(그때는 Google의 트리거 실패 메일로 확인).
+ * - 한계: 트리거 자체가 권한 만료로 시작하지 못하면 이 코드도 실행되지 않는다. 한 회차만 빠졌으면 다음 회차 요약의
+ *   "직전 회차 발송 기록 없음"으로, 전부 멈췄으면 Google의 트리거 실패 메일로 확인한다.
  */
 const ADMIN_SUMMARY = Object.freeze({sentKey:'ADMIN_SUMMARY_SENT', staleMinutes:20, maxNames:5});
 
@@ -74,8 +78,15 @@ function buildAdminRoundSummary_(props, slot, info, now) {
   } else if (info.total !== undefined) {
     const pending = info.pendingIds || [], failedIds = info.failedIds || [];
     const failedCount = Math.max(info.failed || 0, failedIds.length);
-    const sent = Math.max(0, info.total - pending.length - failedCount);
-    lines.push('• 발송 ' + sent + '/' + info.total + '명 완료' + (info.state === 'stopped' ? ' · ⚠️ 시간·시도 상한으로 중지' : ''));
+    let leave = [];
+    try {
+      const saved = JSON.parse(props.getProperty(PERSONAL_LEAVE.skipsKey) || 'null');
+      if (saved && saved.day === day && saved.slot === slot) leave = saved.items;
+    } catch (_) {}
+    const sent = Math.max(0, info.total - pending.length - failedCount - leave.length);
+    lines.push('• 발송 ' + sent + '/' + info.total + '명 완료' + (leave.length ? ' · 연차 ' + leave.length + '명 건너뜀' : '') +
+      (info.state === 'stopped' ? ' · ⚠️ 시간·시도 상한으로 중지' : ''));
+    if (leave.length) lines.push('• 연차: ' + names(leave.map(escapeSlack_)));
     if (failedIds.length) {
       lines.push('• 확인 필요: ' + names(failedIds.map(nameOf)));
       const reasons = [...new Set(failedIds.map(id => (info.failures || {})[id]).filter(Boolean))];
@@ -104,6 +115,21 @@ function buildAdminRoundSummary_(props, slot, info, now) {
     if (issues && issues.day === day && issues.slot === slot && issues.items.length) {
       lines.push('• 명단 확인 필요: ' + issues.items.map(escapeSlack_).join(' / '));
       todo.push('봇 시트 BOT_USERS에서 위 PM의 A열 이름(업무 시트 담당 탭 이름과 같게)·B열 Slack ID·중복 줄을 확인하세요.');
+    }
+  } catch (_) {}
+
+  // 1-2) 직전 회차가 아예 돌지 않았는지(트리거 누락·권한 만료 등). 연차로 건너뛴 기록도 실행한 것으로 본다.
+  try {
+    const prev = adminPreviousRound_(props, slot, day);
+    const log = prev ? bot.getSheetByName(BOT_WORKBOOK.logTab) : null;
+    if (log) {
+      const logRows = log.getLastRow() > 1 ? log.getRange(2, 1, log.getLastRow() - 1, 2).getValues() : [];
+      const ran = logRows.some(row => Object.prototype.toString.call(row[0]) === '[object Date]' &&
+        Utilities.formatDate(row[0], BRIEFING.timezone, 'yyyy-MM-dd') === prev.day && row[1] === 'scheduled-' + prev.slot);
+      if (!ran) {
+        lines.push('• ⚠️ 직전 회차(' + (prev.day === day ? '' : formatBriefingDay_(prev.day) + ' ') + briefingSlotLabel_(prev.slot) + ') 발송 기록 없음');
+        todo.push('직전 회차가 실행되지 않았습니다. 편집기 → 실행 기록에서 sendScheduledBriefing 실패를 확인하고, 트리거가 없으면 09_자동실행.gs → installBriefingTriggers 를 실행하세요.');
+      }
     }
   } catch (_) {}
 
@@ -144,7 +170,12 @@ function buildAdminRoundSummary_(props, slot, info, now) {
     }
   } catch (error) { lines.push('• 일정 연결 상태 확인 실패'); }
 
-  // 4) 저장 공간
+  // 4) 금요일 17:00: 이번 주 피드백
+  if (slot === '17:00' && new Date(Date.parse(day + 'T00:00:00Z')).getUTCDay() === 5) {
+    try { lines.push(adminWeeklyFeedbackLine_(bot, day)); } catch (_) { lines.push('• 이번 주 피드백 확인 실패'); }
+  }
+
+  // 5) 저장 공간
   const kb = adminStorageKb_(props);
   lines.push('• 저장 공간 ' + kb + 'KB / 500KB' + (kb >= 400 ? ' · ⚠️ 정리 필요' : ''));
   if (kb >= 400) todo.push('23_운영알림.gs → cleanupBotStorage 를 실행하세요.');
@@ -152,6 +183,35 @@ function buildAdminRoundSummary_(props, slot, info, now) {
   const unique = [...new Set(todo)];
   lines.push(unique.length ? '\n👉 *할 일*\n' + unique.map(item => '• ' + item).join('\n') : '\n✅ 이상 없음');
   return {text:lines.join('\n'), adminId, rows};
+}
+
+function adminPreviousRound_(props, slot, day) {
+  if (slot === '14:00') return {day, slot:'11:00'};
+  if (slot === '17:00') return {day, slot:'14:00'};
+  // 10:30: 직전 근무일 17:00. 주말·회사 휴무일·공휴일은 건너뛴다. 휴일을 못 읽으면 경고하지 않는다(오탐 방지).
+  const extra = String(props.getProperty('COMPANY_HOLIDAYS') || '').split(/[,\s]+/).filter(Boolean);
+  for (let i = 1; i <= 7; i++) {
+    const date = new Date(Date.parse(day + 'T12:00:00+09:00') - i * 86400000);
+    const prev = Utilities.formatDate(date, BRIEFING.timezone, 'yyyy-MM-dd');
+    if (!isBriefingWeekday_(date) || extra.includes(prev)) continue;
+    try { if (publicHolidayName_(prev)) continue; } catch (_) { return null; }
+    return {day:prev, slot:'17:00'};
+  }
+  return null;
+}
+
+// 피드백 탭의 날짜 칸은 시트가 날짜로 바꿔 저장할 수 있어 두 형식을 모두 읽는다.
+function adminWeeklyFeedbackLine_(bot, day) {
+  const sheet = bot.getSheetByName(FEEDBACK.tab);
+  const rows = sheet && sheet.getLastRow() > 1 ? sheet.getRange(2, 1, sheet.getLastRow() - 1, FEEDBACK.headers.length).getValues() : [];
+  const weekday = new Date(Date.parse(day + 'T00:00:00Z')).getUTCDay();
+  const monday = new Date(Date.parse(day + 'T00:00:00Z') - (weekday + 6) % 7 * 86400000).toISOString().slice(0, 10);
+  const dayOf = value => Object.prototype.toString.call(value) === '[object Date]' ?
+    Utilities.formatDate(value, BRIEFING.timezone, 'yyyy-MM-dd') : String(value || '').slice(0, 10);
+  const week = rows.filter(row => dayOf(row[3]) >= monday && dayOf(row[3]) <= day);
+  if (!week.length) return '• 이번 주 피드백 없음';
+  const up = week.filter(row => row[5] === '👍').length, down = week.filter(row => row[5] === '👎').length;
+  return '• 이번 주 피드백 👍 ' + up + ' · 👎 ' + down + ' (' + new Set(week.map(row => row[1])).size + '명) · ✍️ 자세한 의견은 폼 응답에서';
 }
 
 function adminStorageKb_(props) {

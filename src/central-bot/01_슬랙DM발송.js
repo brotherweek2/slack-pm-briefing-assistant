@@ -168,6 +168,12 @@ function sendPmBriefings_(updatedTest, includeSlack, scheduledSlot, _unused, del
       if(!scheduledSlot||!Array.isArray(deliveryOptions.recipientIds)||deliveryOptions.recipientIds.length>8) throw new Error('정기 발송 묶음 설정 오류');
       routes=routes.filter(route=>deliveryOptions.recipientIds.includes(route.id));
     }
+    // 연차인 PM은 정기 회차에서 뺀다(28번). 끝난 것으로 처리해 이어 보내기 대상에 남기지 않는다.
+    const onLeave = scheduledSlot ? briefingLeaveRoutes_(routes, props, new Date()) : [];
+    if (onLeave.length) {
+      routes = routes.filter(route => !onLeave.some(item => item.route.id === route.id));
+      noteBriefingLeave_(props, log, scheduledSlot, onLeave);
+    }
     const doneIds=deliveryOptions?deliveryOptions.recipientIds.filter(id=>!routes.some(route=>route.id===id)):[];
     const failedIds=[],failureReasons={};let retryAfterMs=0;
     if (updatedTest) {

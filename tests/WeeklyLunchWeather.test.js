@@ -13,7 +13,7 @@ const at = (d, hm) => Date.parse(d + 'T' + hm + ':00+09:00');
 const values = new Map();
 const props = {getProperty: k => values.has(k) ? values.get(k) : null, setProperty: (k, v) => values.set(k, String(v))};
 let fetches = [];
-const ctx = vm.createContext({
+const ctx = vm.createContext({ briefingLeaveRoutes_: () => [],
   console: {log: () => {}}, BRIEFING: {timezone: 'Asia/Seoul'}, escapeSlack_: v => String(v),
   Utilities: {formatDate: kst, DigestAlgorithm: {SHA_256: 's'}, computeDigest: (_a, t) => [...crypto.createHash('sha256').update(t).digest()]},
   PropertiesService: {getScriptProperties: () => props},

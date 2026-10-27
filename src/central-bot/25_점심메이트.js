@@ -5,7 +5,7 @@
  *   켜지 않은 PM의 추천 방식은 그대로다.
  * - 버튼은 ENABLE_LUNCH_MATE=true일 때만 보인다(Slack 앱에 버튼 응답 주소를 등록한 뒤 켠다).
  *
- * - lunchMateParticipants_(props, userRows): 발송 TRUE이면서 버튼으로 켠 PM. 묶음과 무관하게 전원 기준이라 묶음마다 결과가 같다.
+ * - lunchMateParticipants_(props, userRows): 발송 TRUE이면서 버튼으로 켠 PM(오늘 연차인 PM 제외). 묶음과 무관하게 전원 기준이라 묶음마다 결과가 같다.
  * - lunchMatePlan_(participants, catalog, day): 참여자 Slack ID → 오늘의 메이트 식당.
  * - applyLunchMate_(selection, plan, route, day): 켠 사람의 식사 추천을 메이트 식당으로 바꾼다(가볍게 추천은 그대로).
  * - formatLunchMateLine_(route, plan, participants): "🤝 오늘 ○○ 메이트: 이름 님" 한 줄.
@@ -20,10 +20,12 @@ function lunchMateOn_(props, slackId) {
 
 function lunchMateParticipants_(props, userRows) {
   if (props.getProperty('ENABLE_LUNCH_MATE') !== 'true') return [];
-  return userRows.filter(row => row[2] === true && /^[UW][A-Z0-9]{8,}$/.test(String(row[1] || '').trim()))
+  const people = userRows.filter(row => row[2] === true && /^[UW][A-Z0-9]{8,}$/.test(String(row[1] || '').trim()))
     .map(row => ({pm:String(row[0] || '').trim(), id:String(row[1]).trim()}))
     .filter(person => person.pm && lunchMateOn_(props, person.id))
     .sort((a, b) => a.id.localeCompare(b.id));
+  const away = briefingLeaveRoutes_(people, props, new Date()).map(item => item.route.id);
+  return people.filter(person => !away.includes(person.id));
 }
 
 function lunchMateHash_(text) {

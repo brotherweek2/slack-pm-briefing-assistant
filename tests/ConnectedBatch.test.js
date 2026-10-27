@@ -17,7 +17,7 @@ function fixture(){
   SpreadsheetApp:{openById:()=>({})},requiredProperty_:(_p,k)=>k==='BOT_SPREADSHEET_ID'?'synthetic-bot':'synthetic-token',
   requireBotSheet_:(_b,n)=>sheets[n],readBotRows_:s=>s.rows,
   refreshBotTasks:()=>({pmNames:users.map(row=>row[0])}),refreshBotTasksForRound_:()=>({pmNames:users.map(row=>row[0]),reused:false}),selectHaCvPreviewOwners_:names=>names,
-  selfCalendarFilterRoutes_:routes=>routes,saveHaCvDailyHistory_:()=>({}),assertFreshPilotTasks_:()=>{},
+  briefingLeaveRoutes_:()=>[],selfCalendarFilterRoutes_:routes=>routes,saveHaCvDailyHistory_:()=>({}),assertFreshPilotTasks_:()=>{},
   isHaCvBriefingTask_:()=>true,formatPersonalWorkBriefing_:pm=>'WORK '+pm,escapeSlack_:s=>s,
   loadFreshBbpmSnapshot_:()=>({meta:{newest:clock/1000}}),classifySlackSnapshot_:()=>[],buildSlackDigestItems_:()=>[],
   readSlackDigestSeen_:()=>[],selectPersonalSlackItems_:()=>[],formatPersonalSlackDigest_:()=>'',attachSlackToWorkLines_:(text,items)=>({text,rest:items,attached:0}),attachSlackAuthorNames_:items=>items,

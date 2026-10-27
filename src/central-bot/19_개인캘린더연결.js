@@ -263,14 +263,14 @@ function previewConnectedCalendarStatus() {
     const good=valid&&state.connected===true;
     const age=valid?Math.floor((now.getTime()-state.sentAt)/60000):null;
     const sources=valid?state.sources||[]:[];
-    const actualSent=slot=>sent.some(row=>row[0] instanceof Date&&
-      Utilities.formatDate(row[0],'Asia/Seoul','yyyy-MM-dd')===day&&row[1]==='scheduled-'+slot&&row[2]===route.pm&&/^sent/.test(String(row[4])));
+    const record=(slot,pattern)=>sent.some(row=>row[0] instanceof Date&&
+      Utilities.formatDate(row[0],'Asia/Seoul','yyyy-MM-dd')===day&&row[1]==='scheduled-'+slot&&row[2]===route.pm&&pattern.test(String(row[4])));
+    const actualSent=slot=>record(slot,/^sent/)?'성공 기록 있음':record(slot,/^skipped-leave$/)?'연차로 건너뜀':'기록 없음';
     console.log(route.pm+' | 발송 설정 '+(route.sendEnabled?'ON':'OFF')+' | 개인 연결 '+(good?'완료':'미완료')+
       ' | 네 캘린더 조회 성공 '+sources.filter(s=>s.status==='ok').length+'/4'+
       ' | 최근 수집 '+(age===null?'없음':age+'분 전')+
       ' | 실제 자동 갱신 '+stamp(valid?state.lastAutomaticAt:0)+
-      ' | 오늘 정기 발송 10:30 '+(actualSent('11:00')?'성공 기록 있음':'기록 없음')+
-      ' / 14:00 '+(actualSent('14:00')?'성공 기록 있음':'기록 없음')+' / 17:00 '+(actualSent('17:00')?'성공 기록 있음':'기록 없음'));
+      ' | 오늘 정기 발송 10:30 '+actualSent('11:00')+' / 14:00 '+actualSent('14:00')+' / 17:00 '+actualSent('17:00'));
   });
   if(registered.skipped.length) console.log('⚠️ 연결 명단에서 제외된 줄: '+registered.skipped.join(' / ')+' → BOT_USERS 확인');
   const handlers=ScriptApp.getProjectTriggers().map(trigger=>trigger.getHandlerFunction());
