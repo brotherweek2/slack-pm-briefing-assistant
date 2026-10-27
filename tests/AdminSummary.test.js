@@ -50,7 +50,7 @@ assert.match(summary.text, /• Slack 자료 10:52 기준\n/);
 assert.match(summary.text, /• 일정 연결 2\/3명 · 갱신 지연: PM B\(10\/23 09:00\)/);
 assert.match(summary.text, /• 미연결: PM C/);
 assert.match(summary.text, /👉 \*할 일\*\n• Slack ID가 바뀌었거나 DM이 막힌 PM/);
-assert.match(summary.text, /연결 앱 파일 보기 권한/);
+assert.match(summary.text, /연결 앱 파일 공유/);
 assert.match(summary.text, /• 저장 공간 \d+KB \/ 500KB/);
 
 // 회차가 지난 뒤(11:35) 미리보기: 11:13 자동 갱신은 지연이 아니다. 회차(11:00) 전 20분보다 오래된 09:00만 지연.

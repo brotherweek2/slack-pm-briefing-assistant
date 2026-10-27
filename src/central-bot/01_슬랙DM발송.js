@@ -278,7 +278,7 @@ function sendPmBriefings_(updatedTest, includeSlack, scheduledSlot, _unused, del
         doneIds.push(route.id);
         log.appendRow([new Date(), slot, route.pm, ownTasks.map(row => row[0]).join(', '), slackFailure ? 'sent-sheet-only' : 'sent']);
         if (includeSlack && !slackFailure && shownSlack.length) {
-          try { markSlackDigestSeen_(props, route.id, seen, shownSlack); }
+          try { markSlackDigestSeen_(props, route.id, seen, shownSlack, slackItems.filter(item => item.pm === route.pm)); }
           catch (error) { console.log('Slack 발송 성공, 멘션 표시 이력 저장 실패 | DM 재전송하지 않음'); }
         }
         console.log(route.pm + ' | 14:00 오후 업데이트 발송 완료' + (packet.quiet ? '(새 소식 없음)' : '') + ' | 대상 ' + maskPilotId_(route.id));
@@ -338,7 +338,7 @@ function sendPmBriefings_(updatedTest, includeSlack, scheduledSlot, _unused, del
         catch (error) { console.log('한마디 발송 성공, 선택 이력 저장 실패 | 반복 방지 설정 확인 필요'); }
       }
       if (includeSlack && !slackFailure) {
-        try { markSlackDigestSeen_(props, route.id, seen, shownSlack); }
+        try { markSlackDigestSeen_(props, route.id, seen, shownSlack, slackItems.filter(item => item.pm === route.pm)); }
         catch (error) { console.log('Slack 발송 성공, 멘션 표시 이력 저장 실패 | DM 재전송하지 않음'); }
       }
       console.log(route.pm + ' | 개인 브리핑 Slack 발송 완료 | 대상 ' + maskPilotId_(route.id));

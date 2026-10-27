@@ -140,7 +140,7 @@ function buildAdminRoundSummary_(props, slot, info, now) {
         lines.push('• 연결 명단 제외: ' + registry.skipped.map(escapeSlack_).join(' / '));
         todo.push('BOT_USERS에서 위 줄의 이름·Slack ID·이메일 중복을 확인하세요(그 PM만 이번 회차에서 빠짐).');
       }
-      if (stale.length) todo.push('갱신 지연 PM은 연결 앱 파일 보기 권한(PM 그룹 공유)과 연결 화면의 "지금 갱신"을 확인해주세요.');
+      if (stale.length) todo.push('갱신 지연 PM은 연결 앱 파일 공유(사내 전체 뷰어)와 연결 화면의 "지금 갱신"을 확인해주세요.');
     }
   } catch (error) { lines.push('• 일정 연결 상태 확인 실패'); }
 

@@ -185,6 +185,14 @@ const props = { getProperty: key => store[key], setProperty: (key, value) => { s
 assert.equal(ctx.readSlackDigestSeen_(props, 'U00000001').length, 0);
 ctx.markSlackDigestSeen_(props, 'U00000001', [], items);
 assert.equal(ctx.readSlackDigestSeen_(props, 'U00000001').length, 2);
+// 가득 찼을 때 수집 범위 안의 글은 남기고, 범위 밖의 오래된 해시부터 지운다.
+const oldVisible = ctx.slackDigestFingerprint_(items[0]);
+const full = [oldVisible].concat(Array.from({length:149}, (_, i) => 'stale' + i));
+ctx.markSlackDigestSeen_(props, 'U00000002', full, [{...items[1], text:'새 요청'}], [items[0]]);
+const kept = ctx.readSlackDigestSeen_(props, 'U00000002');
+assert.equal(kept.length, 150);
+assert.ok(kept.includes(oldVisible), 'still-visible item is not evicted');
+assert.ok(!kept.includes('stale0'), 'oldest out-of-window hash is evicted first');
 assert.notEqual(ctx.slackDigestFingerprint_(items[0]), ctx.slackDigestFingerprint_({ ...items[0], text: 'HT 수정본 검수 요청' }));
 assert.doesNotMatch(JSON.stringify(store), /검수 요청|example/, 'ledger contains hashes only');
 console.log('Slack digest category, context, brevity and history checks passed');

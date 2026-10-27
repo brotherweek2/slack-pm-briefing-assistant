@@ -54,7 +54,8 @@
  * - readSlackDigestSeen_(props, id): 수신자별 최근 발송 해시를 읽고 형식을 확인한다. 읽음·완료 상태는 아니다.
  *
  * 04-16. 발송 이력 저장 [내부]
- * - markSlackDigestSeen_(props, id, old, items): 성공한 DM에 표시한 항목의 해시만 스크립트 속성에 저장한다. 영향: 발송 해시 속성 저장.
+ * - markSlackDigestSeen_(props, id, old, items, current): 성공한 DM에 표시한 항목의 해시만 스크립트 속성에 저장한다.
+ *   150개를 넘으면 수집 범위를 벗어난 해시부터 지운다. 아직 범위 안의 글(current)은 남겨 "새 소식"으로 다시 나오지 않게 한다. 영향: 발송 해시 속성 저장.
  */
 
 /** 무료 규칙 기반 분류. 원문에 없는 담당자·기한·완료를 생성하지 않는다. */
@@ -534,7 +535,12 @@ function readSlackDigestSeen_(props, id) {
   return seen;
 }
 
-function markSlackDigestSeen_(props, id, old, items) {
+function markSlackDigestSeen_(props, id, old, items, current) {
+  // 순서: 수집 범위 밖 → 범위 안 → 이번에 보낸 것. 넘치면 앞(범위 밖)부터 잘린다.
+  const added = items.map(slackDigestFingerprint_);
+  const visible = new Set((current || []).map(slackDigestFingerprint_));
+  const kept = old.filter(value => !added.includes(value));
+  const ordered = kept.filter(value => !visible.has(value)).concat(kept.filter(value => visible.has(value)), added);
   props.setProperty('SLACK_DIGEST_SEEN_' + id,
-    JSON.stringify([...new Set(old.concat(items.map(slackDigestFingerprint_)))].slice(-SLACK_DIGEST.maxSeen)));
+    JSON.stringify([...new Set(ordered)].slice(-SLACK_DIGEST.maxSeen)));
 }
