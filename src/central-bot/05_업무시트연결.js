@@ -52,6 +52,16 @@
  *
  * 05-14. 업무 후보 반영 [내부]
  * - syncBotTasks_(sheet, detected): 자동 필드를 갱신하고 사라진 후보는 비활성화하며 수동 승인·수정 칸은 보존한다. 영향: BOT_TASKS 자동 필드·활성 상태 갱신.
+ *
+ * 05-15. 원본 시트 연결 [직접 실행]
+ * - 원본 ID는 코드·문서에 적지 않는다. 스크립트 속성 ORIGINAL_HACV_SPREADSHEET_ID / ORIGINAL_PM_REVIEW_SPREADSHEET_ID /
+ *   ORIGINAL_TEST_MANAGEMENT_SPREADSHEET_ID에 원본 시트 주소나 ID를 넣는다(일부만 넣으면 그 시트만 바꾼다).
+ * - previewOriginalSheetConnection(): 원본을 읽기만 해서 지금 쓰는 시트(사본)와 업무 종류·PM별 건수를 나란히 보인다.
+ *   원본·봇 시트·속성 변경 및 DM 없음.
+ * - ⚠️ switchToOriginalSheets(): 미리보기와 같은 읽기 검사를 통과하면 업무 시트 속성(SOURCE_SPREADSHEET_ID 등)을 원본으로 바꾼다.
+ *   바꾸기 전 값은 COPY_SHEETS_BACKUP에 남긴다. 봇은 원본을 읽기만 하고 쓰지 않는다. 영향: 스크립트 속성만.
+ * - ⚠️ revertToCopySheets(): COPY_SHEETS_BACKUP으로 되돌린다. 영향: 스크립트 속성만.
+ * - collectAllWorkTasks_(source, pmReviewSource, testSource, now): 세 업무 시트에서 업무 행을 모은다(읽기만). 봇 시트 반영은 호출자가 한다.
  */
 
 /**
@@ -127,26 +137,14 @@ function refreshBotTasksForRound_(props) {
 function refreshBotTasks_({ bot, sourceId }) {
   const users = requireBotSheet_(bot, BOT_WORKBOOK.usersTab, BOT_WORKBOOK.userHeaders);
   const tasks = requireBotSheet_(bot, BOT_WORKBOOK.tasksTab, BOT_WORKBOOK.taskHeaders);
-  const source = SpreadsheetApp.openById(sourceId);
-  const collected = collectHaCvReviewCandidates_(source);
-  const headsUp = collectHaCvHeadsUpCandidates_(source);
-  const now = new Date();
-  const detected = buildHaCvBotTasks_(collected.byPm, now)
-    .concat(buildHaCvHeadsUpTasks_(headsUp.byPm, now));
-  const day = Utilities.formatDate(now, BRIEFING.timezone, 'yyyy-MM-dd');
-  const pmDashboards = collectHaCvPmDashboards_(source);
-  const upcoming = pmDashboards.flatMap(({ pm, records, gid }) =>
-    buildHaCvUpcomingTasks_(pm, records, day, source.getUrl(), gid, now));
-  const abuse = pmDashboards.flatMap(({ pm, records, gid }) =>
-    buildHaCvAbuseTasks_(pm, records, day, source.getUrl(), gid, now));
   const props = PropertiesService.getScriptProperties();
   const pmReviewId = props.getProperty('PM_REVIEW_SPREADSHEET_ID') || BOT_WORKBOOK.pmReviewCopyId;
   const testId = props.getProperty('TEST_MANAGEMENT_SPREADSHEET_ID') || BOT_WORKBOOK.testManagementCopyId;
   if ([sourceId, bot.getId()].includes(pmReviewId) || [sourceId, bot.getId()].includes(testId)) {
     throw new Error('추가 업무 원천 ID가 HA-CV 원천 또는 브리핑용 시트 ID와 같습니다.');
   }
-  const pmReviews = collectPmReviewTasks_(SpreadsheetApp.openById(pmReviewId), day, now);
-  const testReviews = collectTestReviewTasks_(SpreadsheetApp.openById(testId), now);
+  const {collected, headsUp, detected, pmDashboards, upcoming, abuse, pmReviews, testReviews} = collectAllWorkTasks_(
+    SpreadsheetApp.openById(sourceId), SpreadsheetApp.openById(pmReviewId), SpreadsheetApp.openById(testId), new Date());
   syncBotUsers_(users, Object.keys(collected.byPm)
     .concat(Object.keys(headsUp.byPm), pmDashboards.map(item => item.pm),
       abuse.concat(pmReviews, testReviews).map(row => row[1])));
@@ -365,4 +363,118 @@ function syncBotTasks_(sheet, detected) {
   if (sheet.getLastRow() > 1) {
     sheet.getRange(2, 14, sheet.getLastRow() - 1, 1).setNumberFormat('yyyy-mm-dd hh:mm');
   }
+}
+
+// 세 업무 시트에서 업무 행을 모은다. 읽기만 하며 봇 시트 반영은 호출자(refreshBotTasks_)가 한다.
+function collectAllWorkTasks_(source, pmReviewSource, testSource, now) {
+  const collected = collectHaCvReviewCandidates_(source);
+  const headsUp = collectHaCvHeadsUpCandidates_(source);
+  const detected = buildHaCvBotTasks_(collected.byPm, now)
+    .concat(buildHaCvHeadsUpTasks_(headsUp.byPm, now));
+  const day = Utilities.formatDate(now, BRIEFING.timezone, 'yyyy-MM-dd');
+  const pmDashboards = collectHaCvPmDashboards_(source);
+  const upcoming = pmDashboards.flatMap(({ pm, records, gid }) =>
+    buildHaCvUpcomingTasks_(pm, records, day, source.getUrl(), gid, now));
+  const abuse = pmDashboards.flatMap(({ pm, records, gid }) =>
+    buildHaCvAbuseTasks_(pm, records, day, source.getUrl(), gid, now));
+  const pmReviews = collectPmReviewTasks_(pmReviewSource, day, now);
+  const testReviews = collectTestReviewTasks_(testSource, now);
+  return {collected, headsUp, detected, pmDashboards, upcoming, abuse, pmReviews, testReviews};
+}
+
+const ORIGINAL_SHEETS = Object.freeze([
+  {label:'HA-CV 유저 관리', key:'SOURCE_SPREADSHEET_ID', original:'ORIGINAL_HACV_SPREADSHEET_ID', fallback:''},
+  {label:'PM Review', key:'PM_REVIEW_SPREADSHEET_ID', original:'ORIGINAL_PM_REVIEW_SPREADSHEET_ID', fallback:'pmReviewCopyId'},
+  {label:'테스트지 관리', key:'TEST_MANAGEMENT_SPREADSHEET_ID', original:'ORIGINAL_TEST_MANAGEMENT_SPREADSHEET_ID', fallback:'testManagementCopyId'},
+]);
+
+// 시트 주소를 넣어도 ID만 꺼낸다.
+function sheetIdFromValue_(value) {
+  const text = String(value || '').trim();
+  const match = text.match(/\/spreadsheets\/d\/([A-Za-z0-9_-]{20,})/) || text.match(/^([A-Za-z0-9_-]{20,})$/);
+  return match ? match[1] : '';
+}
+
+// 지금 쓰는 시트와 원본 후보. 원본 칸이 비면 지금 시트를 그대로 쓴다.
+function originalSheetPlan_(props) {
+  const plan = ORIGINAL_SHEETS.map(item => {
+    const current = props.getProperty(item.key) || (item.fallback ? BOT_WORKBOOK[item.fallback] : '');
+    const raw = props.getProperty(item.original);
+    const original = sheetIdFromValue_(raw);
+    if (raw && !original) throw new Error(item.label + ': ' + item.original + ' 값이 시트 주소·ID 형식이 아닙니다.');
+    return {label:item.label, key:item.key, current, next:original || current, changed:!!original && original !== current};
+  });
+  if (!plan.some(item => item.changed)) throw new Error('ORIGINAL_..._SPREADSHEET_ID 속성에 원본 시트 주소를 먼저 넣으세요.');
+  const ids = plan.map(item => item.next);
+  if (new Set(ids).size !== ids.length || ids.includes(props.getProperty('BOT_SPREADSHEET_ID')) || ids.includes(BOT_WORKBOOK.bootstrapId)) {
+    throw new Error('업무 시트 셋이 서로 같거나 봇 시트와 같습니다. 주소를 확인하세요.');
+  }
+  return plan;
+}
+
+// 업무 종류(업무 키 앞부분)·PM별 건수.
+function workTaskCounts_(parts) {
+  const rows = parts.detected.concat(parts.upcoming, parts.abuse, parts.pmReviews, parts.testReviews);
+  const byType = {}, byPm = {};
+  rows.forEach(row => {
+    const type = String(row[0]).split('|')[0];
+    byType[type] = (byType[type] || 0) + 1;
+    byPm[row[1]] = (byPm[row[1]] || 0) + 1;
+  });
+  return {total:rows.length, byType, byPm, pms:parts.pmDashboards.map(item => item.pm)};
+}
+
+function openWorkSheets_(plan, field, label) {
+  return plan.map(item => {
+    try { return SpreadsheetApp.openById(item[field]); }
+    catch (error) { throw new Error(item.label + ' ' + label + ' 열기 실패(보기 권한 확인): ' + error.message); }
+  });
+}
+
+function previewOriginalSheetConnection() {
+  const props = PropertiesService.getScriptProperties();
+  const plan = originalSheetPlan_(props);
+  const now = new Date();
+  const before = workTaskCounts_(collectAllWorkTasks_(...openWorkSheets_(plan, 'current', '현재 시트'), now));
+  const sheets = openWorkSheets_(plan, 'next', '원본');
+  let after;
+  try { after = workTaskCounts_(collectAllWorkTasks_(...sheets, now)); }
+  catch (error) { throw new Error('원본 구조가 봇이 읽는 형식과 다릅니다(탭 이름·열 확인): ' + error.message); }
+  const lines = ['[원본 시트 연결 미리보기] 읽기만 · 원본·봇 시트·속성 변경 없음'];
+  plan.forEach((item, i) => lines.push('• ' + item.label + ': ' + (item.changed ? '원본으로 바뀜 → ' + sheets[i].getName() : '그대로')));
+  lines.push('', '업무 합계: 지금 ' + before.total + '건 → 원본 ' + after.total + '건');
+  [...new Set(Object.keys(before.byType).concat(Object.keys(after.byType)))].sort().forEach(type =>
+    lines.push('• ' + type + ': ' + (before.byType[type] || 0) + ' → ' + (after.byType[type] || 0)));
+  lines.push('', 'PM별 (담당 탭 ' + before.pms.length + '명 → ' + after.pms.length + '명)');
+  [...new Set(Object.keys(before.byPm).concat(Object.keys(after.byPm)))].sort().forEach(pm =>
+    lines.push('• ' + pm + ': ' + (before.byPm[pm] || 0) + ' → ' + (after.byPm[pm] || 0)));
+  const added = after.pms.filter(pm => !before.pms.includes(pm));
+  if (added.length) lines.push('새로 보이는 담당 탭: ' + added.join(', ') + ' (전환 후 BOT_USERS에 발송 FALSE로 추가됨, 켜기 전엔 DM 없음)');
+  lines.push('', '👉 숫자가 원본 시트에서 보이는 업무와 맞으면 switchToOriginalSheets 를 실행하세요.');
+  console.log(lines.join('\n'));
+}
+
+function switchToOriginalSheets() {
+  const props = PropertiesService.getScriptProperties();
+  const plan = originalSheetPlan_(props);
+  // 미리보기와 같은 읽기 검사를 통과해야만 바꾼다.
+  try { collectAllWorkTasks_(...openWorkSheets_(plan, 'next', '원본'), new Date()); }
+  catch (error) { throw new Error('전환 중지 · 원본을 읽지 못했습니다: ' + error.message); }
+  if (!props.getProperty('COPY_SHEETS_BACKUP')) {
+    props.setProperty('COPY_SHEETS_BACKUP', JSON.stringify(Object.fromEntries(plan.map(item => [item.key, props.getProperty(item.key) || '']))));
+  }
+  plan.filter(item => item.changed).forEach(item => props.setProperty(item.key, item.next));
+  props.deleteProperty('BOT_TASKS_REFRESHED'); // 다음 회차가 원본을 새로 읽게 한다.
+  console.log('원본 시트로 전환: ' + plan.filter(item => item.changed).map(item => item.label).join(', ') +
+    ' | 이전 값은 COPY_SHEETS_BACKUP에 보관 · 되돌리기 revertToCopySheets | 원본에는 쓰지 않음, DM 없음');
+}
+
+function revertToCopySheets() {
+  const props = PropertiesService.getScriptProperties();
+  const backup = JSON.parse(props.getProperty('COPY_SHEETS_BACKUP') || 'null');
+  if (!backup) throw new Error('되돌릴 기록(COPY_SHEETS_BACKUP)이 없습니다.');
+  Object.keys(backup).forEach(key => backup[key] ? props.setProperty(key, backup[key]) : props.deleteProperty(key));
+  props.deleteProperty('COPY_SHEETS_BACKUP');
+  props.deleteProperty('BOT_TASKS_REFRESHED');
+  console.log('사본 시트로 되돌림 | DM 없음');
 }

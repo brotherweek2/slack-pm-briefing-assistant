@@ -16,6 +16,11 @@ const BOT_SETTINGS = Object.freeze({tab:'BOT_SETTINGS', headers:['setting', 'val
     ENABLE_FEEDBACK:{note:'false면 DM 아래 피드백 버튼 끄기'},
     COMPANY_HOLIDAYS:{note:'회사만 쉬는 날(쉼표로 구분, 예: 2026-12-31,2027-01-02). 정기 DM·수집 건너뜀'},
     ENABLE_LUNCH_RECOMMENDATION:{note:'false면 점심 추천 끄기'}, ENABLE_BRIEFING_PHRASES:{note:'false면 한마디 끄기'},
+    // 원본 업무 시트 주소(05번 previewOriginalSheetConnection용). 로그·시트에 남기지 않는다.
+    ORIGINAL_HACV_SPREADSHEET_ID:{note:'원본 HA-CV 유저 관리 시트 주소. 반영 후 시트에서 자동 삭제', secret:true},
+    ORIGINAL_PM_REVIEW_SPREADSHEET_ID:{note:'원본 PM Review 시트 주소. 반영 후 시트에서 자동 삭제', secret:true},
+    ORIGINAL_TEST_MANAGEMENT_SPREADSHEET_ID:{note:'원본 테스트지 관리 시트 주소. 반영 후 시트에서 자동 삭제', secret:true},
+    ENABLE_PERSONAL_LEAVE_SKIP:{note:'false면 연차인 PM에게도 정기 DM 보내기'},
   }});
 
 function botSettingsSheet_(props, create) {
