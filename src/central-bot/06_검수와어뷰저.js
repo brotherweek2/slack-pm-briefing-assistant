@@ -46,6 +46,7 @@
  * - normalizeReviewPm_(value): 검수 담당자 표기를 정리한다.
  *
  * 06-13. PM 1차 검수 후보 [내부]
+ * - readDisplayRowsInChunks_(sheet, firstRow, height, width): 원본을 한 번에 5만 칸 미만으로 나눠 읽는다(담당 탭·PM Review).
  * - collectPmReviewTasks_(source, day, now): 검수 Agent 완료·1차 검수중 상태의 담당자·파일·프로젝트·기한을 읽는다.
  *
  * 06-14. 테스트지 검토 후보 [내부]
@@ -91,7 +92,7 @@ const HACV_PM_TAB = Object.freeze({
 function collectPmTabProjects_(sheet, day) {
   const height = sheet.getLastRow(), width = sheet.getLastColumn();
   if (height < 1 || width < HACV_PM_TAB.firstColumn) return [];
-  const rows = sheet.getRange(1, 1, height, width).getDisplayValues();
+  const rows = readDisplayRowsInChunks_(sheet, 1, height, width);
   const findPair = row => (row || []).map(value => String(value || '').trim()).find(value => HACV_PM_TAB.pair.test(value)) || '';
   const records = [];
   const seen = new Set();
@@ -339,6 +340,16 @@ function normalizeReviewPm_(value) {
   return /^[가-힣]{2,4}[A-Z]?$/.test(name) ? name : '';
 }
 
+// 원본 조회 규칙(10/28 인수인계): 한 번에 5만 칸 미만으로 나눠 읽는다. 결과는 한 번에 읽은 것과 같다.
+function readDisplayRowsInChunks_(sheet, firstRow, height, width) {
+  const rows = [];
+  const step = Math.max(1, Math.floor(49000 / width));
+  for (let top = firstRow; top < firstRow + height; top += step) {
+    rows.push(...sheet.getRange(top, 1, Math.min(step, firstRow + height - top), width).getDisplayValues());
+  }
+  return rows;
+}
+
 function collectPmReviewTasks_(source, day, now) {
   const sheet = source.getSheetByName('PM Review');
   if (!sheet) throw new Error('PM Review 탭이 없습니다.');
@@ -355,7 +366,7 @@ function collectPmReviewTasks_(source, day, now) {
     due:header.indexOf('1차 검수 기한'), type:header.indexOf('데이터 타입')};
   const height = Math.max(0, sheet.getLastRow() - firstRow + 1);
   if (!height) return [];
-  const rows = sheet.getRange(firstRow, 1, height, width).getDisplayValues();
+  const rows = readDisplayRowsInChunks_(sheet, firstRow, height, width);
   // 원본은 "검수 Agent 완료"처럼 대소문자·띄어쓰기가 다를 수 있어 둘 다 무시하고 비교한다.
   const statusKey = value => String(value || '').replace(/\s+/g, '').toUpperCase();
   const active = new Set(BOT_WORKBOOK.pmReviewStatuses.map(statusKey));

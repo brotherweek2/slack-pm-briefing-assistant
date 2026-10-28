@@ -56,16 +56,3 @@ function collectMyCalendarEvents_(calendar, now, options) {
     today:events.filter(event => event.start < tomorrowStart.getTime() && event.end > now.getTime()),
     tomorrow:events.filter(event => event.start < tomorrowEnd.getTime() && event.end > tomorrowStart.getTime())};
 }
-
-function mergeMyCalendarSnapshots_(personal, team) {
-  const blocked = new Set((personal.declinedKeys || []).concat(team.declinedKeys || []));
-  const merge = field => {
-    const unique = new Map();
-    personal[field].concat(team[field]).forEach(event => {
-      if (!blocked.has(event.key) && !unique.has(event.key)) unique.set(event.key, event);
-    });
-    return [...unique.values()].sort((a,b) => a.start-b.start || a.title.localeCompare(b.title));
-  };
-  return {day:personal.day, tomorrowDay:personal.tomorrowDay, now:personal.now, until:personal.until,
-    today:merge('today'), tomorrow:merge('tomorrow'), events:merge('events')};
-}

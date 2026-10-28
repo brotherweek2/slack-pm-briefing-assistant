@@ -191,6 +191,19 @@ assert.match(testTasks[0][10], /gid=800&range=H2/);
     ['ko_KR-en_US', '301', '2026-11-02', 9],
     ['ko_KR-en_US', '302', '2026-10-31', 11],
   ], 'G·I열 배치 요약을 읽고 중복 칸은 한 번만');
+  // 큰 탭은 한 번에 5만 칸 미만으로 나눠 읽는다. 조각 경계에 요약 줄(위)과 머리글(아래)이 갈려도 결과가 같아야 한다.
+  const reads = [];
+  const counted = rows => Object.assign(tab('가나다', rows), {getRange: (r, c, h, w) => { reads.push(h * w);
+    return {getDisplayValues: () => rows.slice(r - 1, r - 1 + h).map(x => x.slice(c - 1, c - 1 + w))}; }});
+  const wide = 1000, tall = [row({0: '가나다 · 언어쌍 관리'})].map(x => x.concat(Array(wide - x.length).fill('')));
+  while (tall.length < 48) tall.push(Array(wide).fill(''));
+  tall.push(Object.assign(Array(wide).fill(''), {6: '400 · 10/30 · 5개 · 최대 1배치'})); // 49행: 첫 조각(49줄)의 끝
+  tall.push(Object.assign(Array(wide).fill(''), {0: 'ko_KR-ja_JP'}));                     // 50행: 다음 조각의 처음
+  while (tall.length < 120) tall.push(Array(wide).fill(''));
+  const tallRecs = ctx.collectHaCvPmDashboards_({getSheets: () => [counted(tall)]})[0].records;
+  assert.deepEqual(plain(tallRecs.map(r => [r.pair, r.projectId, r.sheetRow])), [['ko_KR-ja_JP', '400', 49]], 'chunk boundary keeps pair lookup');
+  assert.ok(reads.every(cells => cells < 50000), 'each read stays under 50,000 cells');
+  assert.ok(reads.length > 2, 'tall tab is read in several chunks');
 }
 
 console.log('Additional PM task checks passed');
