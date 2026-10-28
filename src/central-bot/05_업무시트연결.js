@@ -128,10 +128,11 @@ function refreshBotTasksForRound_(props) {
   let cached = null;
   try { cached = JSON.parse(props.getProperty('BOT_TASKS_REFRESHED') || 'null'); } catch (_) {}
   if (cached && cached.day === day && Date.now() - cached.at < 15 * 60000 && Array.isArray(cached.pmNames)) {
-    return {pmNames:cached.pmNames, reused:true};
+    return {pmNames:cached.pmNames, emptyPmTabs:cached.emptyPmTabs || [], reused:true};
   }
   const summary = refreshBotTasks();
-  try { props.setProperty('BOT_TASKS_REFRESHED', JSON.stringify({day, at:Date.now(), pmNames:summary.pmNames})); }
+  try { props.setProperty('BOT_TASKS_REFRESHED', JSON.stringify({day, at:Date.now(), pmNames:summary.pmNames,
+    emptyPmTabs:summary.emptyPmTabs || []})); }
   catch (error) { console.log('업무 갱신 시각 저장 생략 | ' + error.message); }
   return summary;
 }
@@ -168,11 +169,14 @@ function refreshBotTasks_({ bot, sourceId }) {
   console.log('담당 PM ' + pmDashboards.length + '명 | 구축중·목표 종료일 ' +
     BOT_WORKBOOK.upcomingDays + '일 이내 후보 ' + upcoming.length + '건');
   console.log('오늘·전날 목표 종료일의 어뷰저 관리 후보 ' + abuse.length + '건');
+  // 담당 탭은 찾았는데 프로젝트를 하나도 못 읽으면 양식 변경일 가능성이 크다. 0건이 정상과 구분되도록 관리자 요약에 알린다.
+  const emptyPmTabs = pmDashboards.filter(item => !item.records.length).map(item => item.pm);
+  if (emptyPmTabs.length) console.warn('담당 탭에서 프로젝트를 하나도 읽지 못함(양식 확인 필요): ' + emptyPmTabs.join(', '));
   console.log('PM Review 미완료 1차 검수 (기한 경과·예정·미정) ' + pmReviews.length +
     '건, 테스트지 검토 미완료 ' + testReviews.length + '건');
   return { tasks: detected.length + upcoming.length + abuse.length + pmReviews.length + testReviews.length,
     unassigned: collected.unassigned.length + headsUp.unassigned.length,
-    pmNames: pmDashboards.map(item => item.pm) };
+    pmNames: pmDashboards.map(item => item.pm), emptyPmTabs };
 }
 
 function buildHaCvUpcomingTasks_(pm, records, day, sourceUrl, gid, now) {

@@ -118,6 +118,16 @@ function buildAdminRoundSummary_(props, slot, info, now) {
     }
   } catch (_) {}
 
+  // 1-1b) 담당 탭 양식 확인(탭은 있는데 프로젝트 0건 → 종료 임박·어뷰저가 조용히 빠질 수 있음)
+  try {
+    const refreshed = JSON.parse(props.getProperty('BOT_TASKS_REFRESHED') || 'null');
+    const empty = refreshed && refreshed.day === day && Array.isArray(refreshed.emptyPmTabs) ? refreshed.emptyPmTabs : [];
+    if (empty.length) {
+      lines.push('• ⚠️ 담당 탭 형식 확인 필요: ' + names(empty.map(escapeSlack_)) + ' (프로젝트 0건)');
+      todo.push('위 담당 탭의 프로젝트 칸 형식("번호 · M/D · 수량 · 최대 N배치")이 바뀌었는지 inspectOriginalSheetStructure로 확인하세요. 그동안 종료 임박·어뷰저가 빠집니다.');
+    }
+  } catch (_) {}
+
   // 1-2) 직전 회차가 아예 돌지 않았는지(트리거 누락·권한 만료 등). 연차로 건너뛴 기록도 실행한 것으로 본다.
   try {
     const prev = adminPreviousRound_(props, slot, day);

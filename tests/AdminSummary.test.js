@@ -155,3 +155,16 @@ console.log('Admin round summary, hints, once-per-slot, cleanup and start-failur
   assert.doesNotMatch(g.ctx.buildAdminRoundSummary_(g.props, '17:00', {state: 'complete', total: 1, pendingIds: [], failedIds: []}, new Date(at('17:05'))).text, /명단 확인 필요/, 'other rounds unaffected');
   console.log('Roster issues appear in the round summary');
 }
+
+// 담당 탭은 있는데 프로젝트를 하나도 못 읽었으면(양식 변경 의심) 같은 날 요약에 경고한다.
+{
+  const g = fixture({BOT_TASKS_REFRESHED: JSON.stringify({day: '2026-10-23', at: 0, pmNames: ['PM A', 'PM B'], emptyPmTabs: ['PM B']})});
+  g.ctx.selfCalendarRegistry_ = () => [];
+  const t = g.ctx.buildAdminRoundSummary_(g.props, '11:00', {state: 'complete', total: 1, pendingIds: [], failedIds: []}, new Date(at('10:40'))).text;
+  assert.match(t, /⚠️ 담당 탭 형식 확인 필요: PM B \(프로젝트 0건\)/);
+  assert.match(t, /inspectOriginalSheetStructure/);
+  const ok = fixture({BOT_TASKS_REFRESHED: JSON.stringify({day: '2026-10-23', at: 0, pmNames: ['PM A'], emptyPmTabs: []})});
+  ok.ctx.selfCalendarRegistry_ = () => [];
+  assert.doesNotMatch(ok.ctx.buildAdminRoundSummary_(ok.props, '11:00', {state: 'complete', total: 1, pendingIds: [], failedIds: []}, new Date(at('10:40'))).text, /담당 탭 형식/);
+  console.log('Empty PM tabs are flagged in the round summary');
+}
