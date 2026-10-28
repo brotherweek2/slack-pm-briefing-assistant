@@ -58,6 +58,8 @@
  *   ORIGINAL_TEST_MANAGEMENT_SPREADSHEET_ID에 원본 시트 주소나 ID를 넣는다(일부만 넣으면 그 시트만 바꾼다).
  * - previewOriginalSheetConnection(): 원본을 읽기만 해서 지금 쓰는 시트(사본)와 업무 종류·PM별 건수를 나란히 보인다.
  *   원본·봇 시트·속성 변경 및 DM 없음.
+ * - inspectOriginalSheetStructure(): 원본 세 시트의 탭 목록·머리글 줄과 수집기별 통과/실패를 보인다. 구조가 바뀌었을 때 진단용.
+ *   읽기만, 데이터 행은 출력하지 않음. 원본·봇 시트·속성 변경 및 DM 없음.
  * - ⚠️ switchToOriginalSheets(): 미리보기와 같은 읽기 검사를 통과하면 업무 시트 속성(SOURCE_SPREADSHEET_ID 등)을 원본으로 바꾼다.
  *   바꾸기 전 값은 COPY_SHEETS_BACKUP에 남긴다. 봇은 원본을 읽기만 하고 쓰지 않는다. 영향: 스크립트 속성만.
  * - ⚠️ revertToCopySheets(): COPY_SHEETS_BACKUP으로 되돌린다. 영향: 스크립트 속성만.
@@ -180,19 +182,21 @@ function buildHaCvUpcomingTasks_(pm, records, day, sourceUrl, gid, now) {
     .sort((a, b) => a.target.localeCompare(b.target) || a.item.pair.localeCompare(b.item.pair))
     .map(({item, target}) => {
     const column = columnLetters_(item.firstColumn);
+    // 새 양식은 프로젝트 칸 하나(sheetRow), 예전 양식은 5~6행.
+    const cells = item.sheetRow ? column + item.sheetRow : column + '5:' + column + '6';
     return [
-      'HACV_DUE_SOON|' + pm + '|' + item.pair + '|' + item.stage + '|' + column,
+      'HACV_DUE_SOON|' + pm + '|' + item.pair + '|' + (item.sheetRow ? item.projectId : item.stage + '|' + column),
       pm,
       /^\d+$/.test(String(item.projectId || '').trim()) ? String(item.projectId).trim() : '',
       item.pair,
       '구축 현황 확인',
-      item.stage + ' ' + item.batches.join('/') + ' 구축중, 목표 종료일 임박',
+      (item.sheetRow ? '프로젝트 ' + item.projectId : item.stage + ' ' + item.batches.join('/')) + ' 구축중, 목표 종료일 임박',
       '종료 일정과 남은 작업 확인',
       target,
       '', // 우선순위를 임의로 정하지 않는다.
       'HA-CV ' + pm + ' 탭',
-      sourceUrl + '#gid=' + gid + '&range=' + column + '5:' + column + '6',
-      column + '5:6',
+      sourceUrl + '#gid=' + gid + '&range=' + cells,
+      item.sheetRow ? cells : column + '5:6',
       true,
       now,
     ];
@@ -413,7 +417,8 @@ function sheetValueHint_(raw) {
 }
 
 // 지금 쓰는 시트와 원본 후보. 원본 칸이 비면 지금 시트를 그대로 쓴다.
-function originalSheetPlan_(props) {
+// alreadySwitched: 전환 뒤에도 쓰는 조회 함수용. 바뀔 시트가 없어도 멈추지 않는다.
+function originalSheetPlan_(props, alreadySwitched) {
   const plan = ORIGINAL_SHEETS.map(item => {
     const current = props.getProperty(item.key) || (item.fallback ? BOT_WORKBOOK[item.fallback] : '');
     const raw = props.getProperty(item.original);
@@ -422,7 +427,7 @@ function originalSheetPlan_(props) {
       '. 주소의 /d/ 와 /edit 사이 ID만 BOT_SETTINGS B열에 넣고 applyBotSettings를 다시 실행하세요.');
     return {label:item.label, key:item.key, current, next:original || current, changed:!!original && original !== current};
   });
-  if (!plan.some(item => item.changed)) throw new Error('ORIGINAL_..._SPREADSHEET_ID 속성에 원본 시트 주소를 먼저 넣으세요.');
+  if (!alreadySwitched && !plan.some(item => item.changed)) throw new Error('ORIGINAL_..._SPREADSHEET_ID 속성에 원본 시트 주소를 먼저 넣으세요.');
   const ids = plan.map(item => item.next);
   if (new Set(ids).size !== ids.length || ids.includes(props.getProperty('BOT_SPREADSHEET_ID')) || ids.includes(BOT_WORKBOOK.bootstrapId)) {
     throw new Error('업무 시트 셋이 서로 같거나 봇 시트와 같습니다. 주소를 확인하세요.');
@@ -483,7 +488,7 @@ function previewOriginalMyTasks() {
   const bot = SpreadsheetApp.openById(requiredProperty_(props, 'BOT_SPREADSHEET_ID'));
   const pm = getPilotPmName_(readBotRows_(requireBotSheet_(bot, BOT_WORKBOOK.usersTab, BOT_WORKBOOK.userHeaders),
     BOT_WORKBOOK.userHeaders.length));
-  const parts = collectAllWorkTasks_(...openWorkSheets_(originalSheetPlan_(props), 'next', '원본'), new Date());
+  const parts = collectAllWorkTasks_(...openWorkSheets_(originalSheetPlan_(props, true), 'next', '원본'), new Date());
   const rows = parts.detected.concat(parts.upcoming, parts.abuse, parts.pmReviews, parts.testReviews)
     .filter(row => String(row[1] || '').trim() === pm);
   const lines = ['[원본 기준 내 업무] ' + pm + ' · ' + rows.length + '건 · 읽기만, 변경·발송 없음'];
@@ -491,6 +496,69 @@ function previewOriginalMyTasks() {
   rows.forEach(row => lines.push('• ' + [row[4], row[3], row[5], row[7] || '기한 없음', row[9] + ' ' + row[11] + (/^\d/.test(String(row[11])) ? '행' : '')]
     .map(value => String(value || '').trim()).filter(Boolean).join(' · ')));
   if (!rows.length) lines.push('• 없음');
+  console.log(lines.join('\n'));
+}
+
+// 원본 세 시트의 탭·머리글과 수집기별 통과 여부를 보여 준다. 읽기만 하며, 머리글 줄만 출력하고 데이터 행은 내보내지 않는다.
+// 구조가 바뀌었을 때 어느 탭·열이 달라졌는지 한 번에 보려는 용도. 원본·봇 시트·속성 변경 및 DM 없음.
+function inspectOriginalSheetStructure() {
+  const props = PropertiesService.getScriptProperties();
+  const plan = originalSheetPlan_(props, true);
+  const [hacv, pmReview, test] = openWorkSheets_(plan, 'next', '원본');
+  const now = new Date();
+  const day = Utilities.formatDate(now, BRIEFING.timezone, 'yyyy-MM-dd');
+  const lines = ['[원본 구조 점검] 읽기만 · 머리글만 표시 · 원본·봇 시트·속성 변경 없음, DM 없음'];
+  const check = (label, run) => {
+    try { lines.push('  ✅ ' + label + ': ' + run()); }
+    catch (error) { lines.push('  ❌ ' + label + ': ' + error.message); }
+  };
+  const tabList = (spreadsheet, index) => {
+    const names = spreadsheet.getSheets().map(sheet => sheet.getName());
+    lines.push('', '■ ' + plan[index].label + (plan[index].next === plan[index].current ? ' (원본 칸 비어 있음 · 지금 시트)' : '') +
+      ' · ' + spreadsheet.getName() + ' · 탭 ' + names.length + '개', '  탭: ' + names.join(' / '));
+  };
+  const headerRows = (spreadsheet, tab, firstRow, rowCount, width) => {
+    const sheet = spreadsheet.getSheetByName(tab);
+    if (!sheet) { lines.push('  · ' + tab + ': 탭 없음'); return; }
+    const cols = Math.min(width, sheet.getLastColumn());
+    if (cols < 1) { lines.push('  · ' + tab + ': 비어 있음'); return; }
+    sheet.getRange(firstRow, 1, rowCount, cols).getDisplayValues().forEach((row, i) => {
+      const cells = row.map((value, c) => String(value || '').replace(/\s+/g, ' ').trim() ? columnLetters_(c + 1) + '=' + String(value).replace(/\s+/g, ' ').trim() : '')
+        .filter(Boolean);
+      lines.push('  · ' + tab + ' ' + (firstRow + i) + '행: ' + (cells.join(' | ') || '(빈 줄)'));
+    });
+  };
+
+  tabList(hacv, 0);
+  headerRows(hacv, BRIEFING.hubTab, 1, 2, 12);
+  headerRows(hacv, BRIEFING.resultTab, 1, 1, 12);
+  const personTabs = hacv.getSheets().filter(sheet => /^[가-힣]{2,4}[A-Z]?$/.test(sheet.getName()));
+  lines.push('  · 사람 이름 탭 ' + personTabs.length + '개 (예전 양식 H4:H6 기대: 해당 배치 / 구축 상태 / 목표 종료일)');
+  personTabs.forEach(sheet => {
+    const marks = sheet.getLastColumn() >= 8 ? sheet.getRange(4, 8, 3, 1).getDisplayValues().map(row => String(row[0] || '').trim()) : [];
+    lines.push('    - ' + sheet.getName() + ': ' + (marks.join(' / ') || '(열 부족)'));
+  });
+  // 새 양식 확인용: 첫 사람 탭의 상단(언어쌍 목록·첫 프로젝트 머리글까지)만 열 위치와 함께 보인다. 유저 행은 14행부터라 출력하지 않는다.
+  if (personTabs.length) headerRows(hacv, personTabs[0].getName(), 1, 13, 40);
+  check('HUB 검토 필요', () => {
+    const result = collectHaCvReviewCandidates_(hacv);
+    return Object.keys(result.byPm).length + '명 · 미배정 ' + result.unassigned.length + '건';
+  });
+  check('헤즈업 대상', () => {
+    const result = collectHaCvHeadsUpCandidates_(hacv);
+    return Object.keys(result.byPm).length + '명 · 미배정 ' + result.unassigned.length + '건';
+  });
+  check('담당 탭(종료 임박·어뷰저)', () => collectHaCvPmDashboards_(hacv).map(item => item.pm + ' ' + item.records.length + '건(구축중 ' +
+    item.records.filter(record => record.status === '구축중').length + ')').join(', ') || '0개');
+
+  tabList(pmReview, 1);
+  headerRows(pmReview, 'PM Review', 1, 4, 30);
+  check('PM Review 1차 검수', () => collectPmReviewTasks_(pmReview, day, now).length + '건');
+
+  tabList(test, 2);
+  headerRows(test, 'HT 테스트지 제작 관리(ing)', 1, 1, 12);
+  check('테스트지 검토', () => collectTestReviewTasks_(test, now).length + '건');
+
   console.log(lines.join('\n'));
 }
 

@@ -89,7 +89,11 @@ const originalTasks = collectReview({ getSheetByName: () => gridSheet([['327', '
   getUrl: () => 'https://docs.google.com/spreadsheets/d/review/edit' }, '2026-10-07', now);
 assert.deepEqual(originalTasks.map(row => [row[1], row[7]]), reviewTasks.map(row => [row[1], row[7]]));
 assert.match(originalTasks[0][10], /range=K3:L3/);
-assert.equal(originalTasks[0][0], 'PM_REVIEW|3');
+// 키는 행 번호가 아니라 프로젝트·언어쌍이라 행이 밀려도 같은 업무로 본다. 같은 키가 또 나오면 뒤에 행 번호를 붙인다.
+assert.equal(originalTasks[0][0], 'PM_REVIEW|17358|en_US-zh_CN');
+assert.equal(reviewTasks[0][0], originalTasks[0][0]);
+assert.equal(originalTasks[1][0], 'PM_REVIEW|17358|en_US-zh_CN|row4');
+assert.equal(new Set(originalTasks.map(row => row[0])).size, originalTasks.length);
 assert.throws(() => collectReview({ getSheetByName: () => gridSheet([['언어쌍', 'Status']]) }, '2026-10-07', now), /헤더가 예상과 다릅니다/);
 assert.equal(reviewTasks.length, 5, 'all unfinished review tasks appear regardless of deadline distance');
 assert.equal(reviewTasks[4][7], '2026-10-20', 'future unfinished review remains visible');
@@ -130,4 +134,63 @@ assert.equal(testTasks[0][7], '2026-10-10', 'E is the review deadline');
 assert.equal(testTasks[1][7], '2026-10-09');
 assert.match(testTasks[0][6], /F열을 검토 완료로 변경/);
 assert.match(testTasks[0][10], /gid=800&range=H2/);
+// 새 양식 담당 탭(10/27~): 줄 전체에서 "프로젝트 · 목표 종료일 · 수량 · 최대 N배치", 다음 줄에 언어쌍 블록 머리글.
+// 지난 목표 종료일은 종료, 오늘~7일 안은 종료 임박, 오늘·어제 종료는 어뷰저 관리.
+{
+  const ctx = vm.createContext({console, BRIEFING: {timezone: 'Asia/Seoul'},
+    Utilities: {formatDate: () => '2026-10-28'}});
+  vm.runInContext(fs.readFileSync('src/central-bot/05_업무시트연결.js', 'utf8'), ctx);
+  vm.runInContext(fs.readFileSync('src/central-bot/06_검수와어뷰저.js', 'utf8'), ctx);
+  const plain = value => JSON.parse(JSON.stringify(value));
+  const row = cells => { const r = Array(20).fill(''); Object.entries(cells).forEach(([c, v]) => { r[c] = v; }); return r; };
+  const grid = [
+    row({0: '가나다 · 언어쌍 관리', 10: '프로젝트별 진행 상태'}),
+    row({0: '언어쌍 바로가기'}), row({0: 'pt_BR-zh_CN', 1: 'es_ES-zh_CN'}),
+    row({10: '100 · 10/12 · 269개 · 최대 2배치', 11: '101 · 10/30 · 155개 · 최대 2배치', 12: '102 · 11/9 · 3개 · 최대 2배치'}),
+    row({0: 'pt_BR-zh_CN', 1: '유저', 2: '이메일', 3: '현재 상태'}),
+    row({0: 'A', 1: 'test.web'}),
+    row({10: '200 · 10/27 · 248개 · 최대 2배치', 11: '201 · 1/3 · 9개 · 최대 1배치'}),
+    row({0: 'es_ES-zh_CN', 1: '유저', 2: '이메일', 3: '현재 상태'}),
+  ];
+  const tab = (name, rows) => ({getName: () => name, getSheetId: () => 77, getLastRow: () => rows.length,
+    getLastColumn: () => rows[0].length,
+    getRange: (r, c, h, w) => ({getDisplayValues: () => rows.slice(r - 1, r - 1 + h).map(x => x.slice(c - 1, c - 1 + w))})});
+  const boards = ctx.collectHaCvPmDashboards_({getSheets: () => [tab('가나다', grid), tab('_백업_가나다', grid)]});
+  assert.deepEqual(plain(boards.map(b => b.pm)), ['가나다'], 'backup tabs are skipped');
+  const recs = boards[0].records;
+  assert.deepEqual(plain(recs.map(r => [r.pair, r.projectId, r.targetEnd, r.status, r.sheetRow, r.firstColumn])), [
+    ['pt_BR-zh_CN', '100', '2026-10-12', '종료', 4, 11],
+    ['pt_BR-zh_CN', '101', '2026-10-30', '구축중', 4, 12],
+    ['pt_BR-zh_CN', '102', '2026-11-09', '구축중', 4, 13],
+    ['es_ES-zh_CN', '200', '2026-10-27', '종료', 7, 11],
+    ['es_ES-zh_CN', '201', '2027-01-03', '구축중', 7, 12], // 연말 경계: 가장 가까운 해
+  ]);
+  const url = 'https://docs.google.com/spreadsheets/d/example/edit';
+  const due = ctx.buildHaCvUpcomingTasks_('가나다', recs, '2026-10-28', url, 77, now);
+  assert.deepEqual(plain(due.map(r => r[0])), ['HACV_DUE_SOON|가나다|pt_BR-zh_CN|101'], 'only open projects ending within 7 days');
+  assert.equal(due[0][5], '프로젝트 101 구축중, 목표 종료일 임박');
+  assert.match(due[0][10], /gid=77&range=L4$/);
+  assert.equal(due[0][11], 'L4');
+  const abuse = ctx.buildHaCvAbuseTasks_('가나다', recs, '2026-10-28', url, 77, now);
+  assert.deepEqual(plain(abuse.map(r => r[0])), ['HACV_ABUSE|가나다|es_ES-zh_CN|2026-10-27'], 'ended yesterday → abuse reminder');
+  assert.equal(abuse[0][5], '목표 종료일 2026-10-27: 프로젝트 200');
+  assert.match(abuse[0][10], /range=K7$/);
+  // 10/28 인수인계 배치: 요약이 배치마다 A열(G test.web · I ta.text · K tests.system)에 있고, 바로 아래가 블록 머리글.
+  // G·I열도 읽고, 같은 프로젝트가 두 칸에 보이면 한 번만 센다.
+  const batchGrid = [
+    row({0: '가나다 · 언어쌍 관리'}),
+    row({6: '300 · 10/29 · 50개 · 최대 3배치', 8: '301 · 11/2 · 20개 · 최대 1배치', 10: '302 · 10/31 · 10개 · 최대 2배치',
+      12: '300 · 10/29 · 50개 · 최대 3배치'}),
+    row({0: 'ko_KR-en_US', 2: '유저', 3: '이메일', 4: '현재 상태', 5: '메모', 6: 'test.web\nA', 7: 'B', 8: 'ta.text\nA', 9: 'B'}),
+    row({2: '사용자1', 3: 'user1@example.com', 6: '할당 완료'}),
+    row({}), row({}),
+  ];
+  const batchRecs = ctx.collectHaCvPmDashboards_({getSheets: () => [tab('가나다', batchGrid)]})[0].records;
+  assert.deepEqual(plain(batchRecs.map(r => [r.pair, r.projectId, r.targetEnd, r.firstColumn])), [
+    ['ko_KR-en_US', '300', '2026-10-29', 7],
+    ['ko_KR-en_US', '301', '2026-11-02', 9],
+    ['ko_KR-en_US', '302', '2026-10-31', 11],
+  ], 'G·I열 배치 요약을 읽고 중복 칸은 한 번만');
+}
+
 console.log('Additional PM task checks passed');

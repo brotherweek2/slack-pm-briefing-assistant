@@ -6,10 +6,11 @@
  * - 아래 번호는 안내 제목이며 실제 함수 이름 앞에 숫자를 입력하지 않는다.
  *
  * 14-01. HUB 검토 필요 읽기 [내부]
- * - collectHaCvReviewCandidates_(spreadsheet): 기존 담당자·언어쌍·검토 상태의 허용된 열만 읽어 후보와 근거 링크를 만든다.
+ * - collectHaCvReviewCandidates_(spreadsheet): HACV_Hub 1~3행에서 언어쌍·담당자·전송 여부 머리글을 이름으로 찾아 그 열만 읽고 후보와 근거 링크를 만든다.
  *
  * 14-02. 헤즈업 대상 읽기 [내부]
- * - collectHaCvHeadsUpCandidates_(spreadsheet): 담당 PM·언어쌍·헤즈업 상태의 허용된 열만 읽어 후보와 근거 링크를 만든다.
+ * - collectHaCvHeadsUpCandidates_(spreadsheet): 결과 집계 1~3행에서 언어쌍·담당 PM·헤즈업 상태 머리글을 이름으로 찾아 그 열만 읽고 후보와 근거 링크를 만든다.
+ * - findSourceHeader_(sheet, maxRow, names, label): 머리글 줄·열 위치를 이름으로 찾는다. 못 찾으면 필요한 이름을 알려 주며 멈춘다.
  *
  * 14-03. Slack DM API [내부]
  * - buildBriefingBlocks_(text): 개인 브리핑을 영역별 구분선·회색 기준 줄 블록으로 변환(50개 초과 시 null). briefingBlocksAsText_는 미리보기 로그용.
@@ -28,7 +29,7 @@
  * NAC 개인 업무 이슈 브리핑 — Google Apps Script 시범 코드.
  *
  * 현재 연결된 원천: HA-CV 유저 관리 시트의 헤즈업 `헤즈업 대상`과 HUB `검토 필요` 후보.
- * 헤즈업 담당 PM은 결과 집계 E열, HUB 검토 담당 PM은 HUB D열을 사용한다.
+ * 헤즈업 담당 PM은 결과 집계 "담당 PM" 열, HUB 검토 담당 PM은 HUB "(현) 담당자" 열을 이름으로 찾아 쓴다.
  * 기존 시트의 참여확정/투입 버튼을 변경하거나 시트 값을 쓰지 않는다.
  * 별도 유료 AI 서비스는 사용하지 않는다.
  */
@@ -46,29 +47,27 @@ const BRIEFING = Object.freeze({
 function collectHaCvReviewCandidates_(spreadsheet) {
   const hubTab = spreadsheet.getSheetByName(BRIEFING.hubTab);
   if (!hubTab) throw new Error('HACV_Hub 탭을 찾지 못했습니다.');
-  const headers = hubTab.getRange(2, 1, 1, 6).getDisplayValues()[0];
-  // D열 이름은 사본 "(기존) 담당자", 원본 "(현) 담당자"다. 열 위치는 같다.
-  if (headers[0] !== '투입 언어쌍' || !['(기존) 담당자', '(현) 담당자'].includes(headers[3]) ||
-      headers[5] !== '담당자 탭으로 전송 여부') {
-    throw new Error('HACV_Hub의 언어쌍·담당자·상태 헤더가 예상과 다릅니다. 2행 A·D·F열 기대: 투입 언어쌍 / (현) 담당자 / ' +
-      '담당자 탭으로 전송 여부 · 실제: ' + [headers[0], headers[3], headers[5]].map(v => '"' + v + '"').join(' / '));
-  }
+  // 머리글 줄·열을 이름으로 찾는다(사본 2행 A·D·F열). 담당자 열 이름은 사본 "(기존) 담당자", 원본 "(현) 담당자".
+  const header = findSourceHeader_(hubTab, 3, {pair: ['투입 언어쌍'], pm: ['(현) 담당자', '(기존) 담당자'],
+    status: ['담당자 탭으로 전송 여부']}, 'HACV_Hub의 언어쌍·담당자·상태');
+  const statusLetter = columnLetters_(header.col.status + 1);
 
   const byPm = {};
   const unassigned = [];
   let sourceBase = '';
   const hubLastRow = hubTab.getLastRow();
-  if (hubLastRow >= 3) {
-    const pairs = hubTab.getRange(3, 1, hubLastRow - 2, 1).getDisplayValues();
-    const owners = hubTab.getRange(3, 4, hubLastRow - 2, 1).getDisplayValues();
-    const statuses = hubTab.getRange(3, 6, hubLastRow - 2, 1).getDisplayValues();
+  const firstRow = header.row + 1;
+  if (hubLastRow >= firstRow) {
+    const pairs = hubTab.getRange(firstRow, header.col.pair + 1, hubLastRow - firstRow + 1, 1).getDisplayValues();
+    const owners = hubTab.getRange(firstRow, header.col.pm + 1, hubLastRow - firstRow + 1, 1).getDisplayValues();
+    const statuses = hubTab.getRange(firstRow, header.col.status + 1, hubLastRow - firstRow + 1, 1).getDisplayValues();
     pairs.forEach((row, index) => {
       const pair = row[0].trim();
       const pm = owners[index][0].trim();
       const status = statuses[index][0].trim();
       if (status !== BRIEFING.reviewStatus) return;
 
-      const sheetRow = index + 3;
+      const sheetRow = index + firstRow;
       if (!pair || !pm) {
         unassigned.push('HUB ' + sheetRow + '행');
         return;
@@ -78,33 +77,49 @@ function collectHaCvReviewCandidates_(spreadsheet) {
       if (!sourceBase) sourceBase = spreadsheet.getUrl() + '#gid=' + hubTab.getSheetId();
       byPm[pm][pair].push({
         row: sheetRow,
-        url: sourceBase + '&range=F' + sheetRow,
+        url: sourceBase + '&range=' + statusLetter + sheetRow,
       });
     });
   }
   return { byPm, unassigned };
 }
 
+// 1~maxRow행 중 모든 이름이 있는 줄을 머리글로 보고 열 위치를 돌려준다. 못 찾으면 가장 비슷한 줄을 알려 주며 멈춘다.
+function findSourceHeader_(sheet, maxRow, names, label) {
+  const width = Math.max(1, Math.min(sheet.getLastColumn(), 40));
+  const top = sheet.getRange(1, 1, maxRow, width).getDisplayValues()
+    .map(row => row.map(value => String(value || '').replace(/\s+/g, ' ').trim()));
+  for (let r = 0; r < top.length; r++) {
+    const col = {};
+    if (Object.keys(names).every(key => (col[key] = top[r].findIndex(value => names[key].includes(value))) >= 0)) {
+      return {row: r + 1, col};
+    }
+  }
+  throw new Error(label + ' 머리글을 1~' + maxRow + '행에서 찾지 못했습니다. 필요한 이름: ' +
+    Object.values(names).map(list => list.join(' 또는 ')).join(' / '));
+}
+
 function collectHaCvHeadsUpCandidates_(spreadsheet) {
   const sheet = spreadsheet.getSheetByName(BRIEFING.resultTab);
   if (!sheet) throw new Error('HA-CV 헤즈업 결과 집계 탭을 찾지 못했습니다.');
-  const headers = sheet.getRange(1, 4, 1, 5).getDisplayValues()[0];
-  if (headers[0] !== '언어쌍' || headers[1] !== '담당 PM' ||
-      headers[4] !== '헤즈업 상태 (HA-CV 참여 여부)') {
-    throw new Error('헤즈업 결과 집계의 언어쌍·담당 PM·상태 헤더가 예상과 다릅니다.');
-  }
+  // 사본은 1행 D·E·H열. 이름으로 찾는다.
+  const header = findSourceHeader_(sheet, 3, {pair: ['언어쌍'], pm: ['담당 PM'],
+    status: ['헤즈업 상태 (HA-CV 참여 여부)']}, '헤즈업 결과 집계의 언어쌍·담당 PM·상태');
+  const statusLetter = columnLetters_(header.col.status + 1);
   const byPm = {};
   const unassigned = [];
   let sourceBase = '';
   const lastRow = sheet.getLastRow();
-  if (lastRow < 2) return { byPm, unassigned };
-  const pairOwners = sheet.getRange(2, 4, lastRow - 1, 2).getDisplayValues();
-  const statuses = sheet.getRange(2, 8, lastRow - 1, 1).getDisplayValues();
-  pairOwners.forEach((row, index) => {
+  const firstRow = header.row + 1;
+  if (lastRow < firstRow) return { byPm, unassigned };
+  const pairs = sheet.getRange(firstRow, header.col.pair + 1, lastRow - firstRow + 1, 1).getDisplayValues();
+  const owners = sheet.getRange(firstRow, header.col.pm + 1, lastRow - firstRow + 1, 1).getDisplayValues();
+  const statuses = sheet.getRange(firstRow, header.col.status + 1, lastRow - firstRow + 1, 1).getDisplayValues();
+  pairs.forEach((cell, index) => {
     if (String(statuses[index][0] || '').trim() !== BRIEFING.headsUpStatus) return;
-    const pair = row[0].trim();
-    const pm = row[1].trim();
-    const sheetRow = index + 2;
+    const pair = cell[0].trim();
+    const pm = owners[index][0].trim();
+    const sheetRow = index + firstRow;
     if (!pair || !pm) {
       unassigned.push(sheetRow);
       return;
@@ -114,7 +129,7 @@ function collectHaCvHeadsUpCandidates_(spreadsheet) {
     if (!sourceBase) sourceBase = spreadsheet.getUrl() + '#gid=' + sheet.getSheetId();
     byPm[pm][pair].push({
       row: sheetRow,
-      url: sourceBase + '&range=H' + sheetRow,
+      url: sourceBase + '&range=' + statusLetter + sheetRow,
     });
   });
   return { byPm, unassigned };

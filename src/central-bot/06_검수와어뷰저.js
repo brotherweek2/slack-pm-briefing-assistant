@@ -6,7 +6,8 @@
  * - 아래 번호는 안내 제목이며 실제 함수 이름 앞에 숫자를 입력하지 않는다.
  *
  * 06-01. PM 담당 탭 읽기 [내부]
- * - collectHaCvPmDashboards_(source): 유효한 PM 탭의 상단 프로젝트·배치·상태·목표 종료일을 읽는다.
+ * - collectHaCvPmDashboards_(source): 유효한 PM 탭의 프로젝트·목표 종료일을 읽는다. 예전 양식(H4:H6)과 새 양식(1행 "언어쌍 관리") 모두 읽는다.
+ * - collectPmTabProjects_(sheet, day): 새 양식 담당 탭 전체 열의 "프로젝트 번호 · 목표 종료일 · 수량 · 최대 N배치" 칸을 레코드로 만든다. 지난 종료일은 종료로 본다.
  *
  * 06-02. 대안 일정 자료 읽기 [내부]
  * - collectHaCvPpDashboards_(source): 진단용 HACV_PP 헤더와 날짜·담당자를 읽는다. 현재 일일 발송 기준을 대체하지 않는다.
@@ -54,6 +55,7 @@
 /** Active PM tabs are discovered from the current source structure, not a name list. */
 function collectHaCvPmDashboards_(source) {
   const dashboards = [];
+  let day = '';
   source.getSheets().forEach(sheet => {
     const pm = sheet.getName();
     // Person-named active tabs; archive and operational tabs are excluded.
@@ -61,11 +63,59 @@ function collectHaCvPmDashboards_(source) {
     const width = sheet.getLastColumn();
     if (width < 9) return;
     const top = sheet.getRange(1, 1, 6, width).getDisplayValues();
+    // 예전 양식: H4:H6 해당 배치 / 구축 상태 / 목표 종료일
     if ([top[3][7], top[4][7], top[5][7]].map(value => String(value || '').trim())
-      .join('|') !== '해당 배치|구축 상태|목표 종료일') return;
-    dashboards.push({ pm, records: collectPilotDashboard_(top), gid: sheet.getSheetId() });
+      .join('|') === '해당 배치|구축 상태|목표 종료일') {
+      dashboards.push({ pm, records: collectPilotDashboard_(top), gid: sheet.getSheetId() });
+      return;
+    }
+    // 새 양식(10/27~): 1행 "PM · 언어쌍 관리", 언어쌍 블록 머리글 위 줄의 배치 칸에 "프로젝트 번호 · 목표 종료일 · 수량 · 최대 N배치"
+    if (top[0].some(value => String(value || '').includes('언어쌍 관리'))) {
+      day = day || Utilities.formatDate(new Date(), BRIEFING.timezone, 'yyyy-MM-dd');
+      dashboards.push({ pm, records: collectPmTabProjects_(sheet, day), gid: sheet.getSheetId() });
+    }
   });
   return dashboards;
+}
+
+const HACV_PM_TAB = Object.freeze({
+  // 프로젝트 요약은 블록 머리글 바로 위 줄, 배치마다 A열(G·I·K·M·O)에 있다(10/28 인수인계). 열이 바뀔 수 있어 줄 전체를 본다.
+  firstColumn: 1,
+  project: /^(\d+)\s*·\s*(\d{1,2})\/(\d{1,2})\s*·\s*[\d,]+\s*개\s*·\s*최대\s*(\d+)\s*배치/,
+  pair: /^[a-z]{2,3}_[A-Z]{2}-[a-z]{2,3}_[A-Z]{2}$/,
+});
+
+// 새 양식 담당 탭: 프로젝트 칸을 한 건씩 레코드로 만든다. 언어쌍은 같은 줄 또는 바로 아래 줄(블록 머리글)에서 찾는다.
+// 같은 언어쌍·프로젝트 번호가 여러 칸에 보이면 첫 칸만 쓴다.
+// 목표 종료일이 오늘 이후면 구축중, 지났으면 종료(사용자 확인 10/27). 연도는 오늘에서 가장 가까운 해로 정한다.
+function collectPmTabProjects_(sheet, day) {
+  const height = sheet.getLastRow(), width = sheet.getLastColumn();
+  if (height < 1 || width < HACV_PM_TAB.firstColumn) return [];
+  const rows = sheet.getRange(1, 1, height, width).getDisplayValues();
+  const findPair = row => (row || []).map(value => String(value || '').trim()).find(value => HACV_PM_TAB.pair.test(value)) || '';
+  const records = [];
+  const seen = new Set();
+  rows.forEach((row, index) => {
+    for (let col = HACV_PM_TAB.firstColumn - 1; col < row.length; col++) {
+      const match = String(row[col] || '').trim().match(HACV_PM_TAB.project);
+      if (!match) continue;
+      const pair = findPair(row) || findPair(rows[index + 1]);
+      const targetEnd = nearestIsoDate_(Number(match[2]), Number(match[3]), day);
+      if (!pair || !targetEnd || seen.has(pair + '|' + match[1])) continue;
+      seen.add(pair + '|' + match[1]);
+      records.push({ pair, projectId: match[1], stage: '', status: targetEnd >= day ? '구축중' : '종료',
+        targetEnd, batches: [], firstColumn: col + 1, sheetRow: index + 1 });
+    }
+  });
+  return records;
+}
+
+// 월/일만 있는 날짜를 오늘에서 가장 가까운 해의 ISO 날짜로 바꾼다(연말·연초 경계용).
+function nearestIsoDate_(month, date, day) {
+  const year = Number(day.slice(0, 4));
+  const today = Date.UTC(year, Number(day.slice(5, 7)) - 1, Number(day.slice(8, 10)));
+  return [year - 1, year, year + 1].map(y => normalizeSheetDate_(y + '-' + month + '-' + date)).filter(Boolean)
+    .sort((a, b) => Math.abs(Date.parse(a) - today) - Math.abs(Date.parse(b) - today))[0] || '';
 }
 
 // 종료 임박·어뷰저 관리의 공통 원천. PM 개인 탭 상단은 이 탭을 수식으로 참조하므로,
@@ -255,8 +305,10 @@ function buildHaCvAbuseTasks_(pm, records, day, sourceUrl, gid, now) {
     const items = due.get(key);
     const pair = items[0].pair;
     const target = normalizeSheetDate_(items[0].targetEnd);
-    const stages = [...new Set(items.map(item => item.stage))].filter(Boolean);
+    // 새 양식은 단계 대신 프로젝트 번호, 링크는 프로젝트 칸(sheetRow). 예전 양식은 단계·2~6행.
+    const stages = [...new Set(items.map(item => item.sheetRow ? '프로젝트 ' + item.projectId : item.stage))].filter(Boolean);
     const column = columnLetters_(items[0].firstColumn);
+    const cells = items[0].sheetRow ? column + items[0].sheetRow : column + '2:' + column + '6';
     return [
       'HACV_ABUSE|' + pm + '|' + pair + '|' + target,
       pm,
@@ -268,8 +320,8 @@ function buildHaCvAbuseTasks_(pm, records, day, sourceUrl, gid, now) {
       addDaysToIsoDate_(target, 1),
       '',
       'HA-CV ' + pm + ' 탭',
-      sourceUrl + '#gid=' + gid + '&range=' + column + '2:' + column + '6',
-      column + '2:6',
+      sourceUrl + '#gid=' + gid + '&range=' + cells,
+      items[0].sheetRow ? cells : column + '2:6',
       true,
       now,
     ];
@@ -308,7 +360,7 @@ function collectPmReviewTasks_(source, day, now) {
   const statusKey = value => String(value || '').replace(/\s+/g, '').toUpperCase();
   const active = new Set(BOT_WORKBOOK.pmReviewStatuses.map(statusKey));
   const link = [columnLetters_(col.pm + 1), columnLetters_(col.due + 1)];
-  return rows.flatMap((row, index) => {
+  return uniqueTaskKeys_(rows.flatMap((row, index) => {
     const status = String(row[col.status] || '').trim();
     const pm = normalizeReviewPm_(row[col.pm]);
     const pair = String(row[col.pair] || '').trim();
@@ -320,7 +372,8 @@ function collectPmReviewTasks_(source, day, now) {
     const projectId = /^\d+$/.test(String(row[0] || '').trim()) ? String(row[0]).trim() : '';
     const type = col.type < 0 ? '' : String(row[col.type] || '').trim();
     return [[
-      'PM_REVIEW|' + rowNumber,
+      // 원본은 행이 끼거나 정렬되므로 행 번호 대신 프로젝트 번호·언어쌍으로 구분한다(14:00 새 업무 판단용).
+      'PM_REVIEW|' + (projectId ? projectId + '|' + pair : 'row' + rowNumber),
       pm,
       projectId,
       pair,
@@ -335,7 +388,7 @@ function collectPmReviewTasks_(source, day, now) {
       true,
       now,
     ]];
-  });
+  }));
 }
 
 function collectTestReviewTasks_(source, now) {
@@ -350,7 +403,7 @@ function collectTestReviewTasks_(source, now) {
   const height = Math.max(0, sheet.getLastRow() - 1);
   if (!height) return [];
   const rows = sheet.getRange(2, 1, height, 8).getDisplayValues();
-  return rows.flatMap((row, index) => {
+  return uniqueTaskKeys_(rows.flatMap((row, index) => {
     const pair = String(row[0] || '').trim();
     const due = normalizeSheetDate_(row[4]);
     const status = String(row[5] || '').trim();
@@ -358,7 +411,7 @@ function collectTestReviewTasks_(source, now) {
     if (!pm || !pair || !['생성 완료', '검토 중'].includes(status)) return [];
     const rowNumber = index + 2;
     return [[
-      'TEST_REVIEW|' + rowNumber,
+      'TEST_REVIEW|' + pair + '|' + pm, // 행 번호 대신 언어쌍·담당자(같은 조합이 또 있으면 행 번호를 붙임)
       pm,
       '',
       pair,
@@ -373,5 +426,15 @@ function collectTestReviewTasks_(source, now) {
       true,
       now,
     ]];
+  }));
+}
+
+// 같은 업무 키가 두 번 나오면(같은 프로젝트·언어쌍 행이 둘) 뒤의 것에 행 번호를 붙여 BOT_TASKS 키 중복을 막는다.
+function uniqueTaskKeys_(rows) {
+  const seen = new Set();
+  return rows.map(row => {
+    if (seen.has(row[0])) row[0] += '|row' + row[11];
+    seen.add(row[0]);
+    return row;
   });
 }
