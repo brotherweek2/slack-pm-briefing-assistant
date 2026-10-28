@@ -29,6 +29,13 @@ const news = ctx.formatAfternoonUpdate_('PM A', '2026-10-26', [['PM_REVIEW|9']],
 assert.equal(news.quiet, false);
 assert.match(news.text, /^🕑 \*PM A\* 님, 10\/26\(월\) 오후 업데이트입니다\.\n\n📌 \*오전 이후 새로 생긴 업무\*\n• PM_REVIEW\|9\n\n💬 \*새 Slack\*\n• 새 요청\n\n_기준_$/);
 assert.match(ctx.formatAfternoonUpdate_('PM A', '2026-10-26', [['X|1']], [], '', '').text, /오전 이후 새 요청·안내 없음/);
+// 14:00에도 오늘 남은 회의: 새 소식이 없어도 붙고(quiet 유지), 있으면 업무와 Slack 사이에 들어간다.
+const meet = '\n\n📅 *오늘 회의*\n• 15:00 리뷰';
+const quietMeet = ctx.formatAfternoonUpdate_('PM A', '2026-10-26', [], [], '', '\n\n_기준_', meet);
+assert.equal(quietMeet.quiet, true);
+assert.equal(quietMeet.text, '🕑 *PM A* 님, 10/26(월) 오전 이후 새로운 알림이 없습니다. 점심 맛있게 드셨나요? 🍚\n\n📅 *오늘 회의*\n• 15:00 리뷰\n\n_기준_');
+assert.match(ctx.formatAfternoonUpdate_('PM A', '2026-10-26', [['PM_REVIEW|9']], [{title: '새 요청'}], '', '\n\n_기준_', meet).text,
+  /• PM_REVIEW\|9\n\n📅 \*오늘 회의\*\n• 15:00 리뷰\n\n💬 \*새 Slack\*\n• 새 요청\n\n_기준_$/);
 const failed = ctx.formatAfternoonUpdate_('PM A', '2026-10-26', [], [], '사유: 읽기 제한', '');
 assert.equal(failed.quiet, false, 'Slack failure is not reported as "nothing new"');
 assert.match(failed.text, /읽어오지 못했습니다 — 사유: 읽기 제한/);

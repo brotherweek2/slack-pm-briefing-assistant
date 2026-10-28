@@ -228,9 +228,23 @@ function sendPmBriefings_(updatedTest, includeSlack, scheduledSlot, _unused, del
         const keys = morningTaskKeys_(prior, day, route.pm);
         const newRows = keys ? ownTasks.filter(row => !keys.includes(String(row[0]))) : [];
         const fresh = ownSlack.filter(item => !item.previouslySent);
+        // 14:00에도 오늘 남은 회의를 붙인다. 회의를 못 읽어도 업무·Slack은 보낸다.
+        const withCalendar = props.getProperty('ENABLE_CALENDAR_BRIEFING') === 'true';
+        let meetings = '', calendarFailure = false;
+        if (withCalendar) {
+          try {
+            meetings = buildLiveCalendarSection_(route, props, '14:00', new Date(),
+              forcedSlot ? new Date(Date.parse(day + 'T14:00:00+09:00')) : null);
+          } catch (error) {
+            calendarFailure = true;
+            meetings = '\n\n📅 *오늘 회의*\n⚠️ 본인 회의 일정을 불러오지 못했습니다. 실행 계정·캘린더 연결 설정을 확인해주세요.';
+            console.log('캘린더 조회 실패: ' + error.message);
+          }
+        }
         const update = formatAfternoonUpdate_(route.pm, day, newRows, fresh, slackFailure,
-          formatBriefingBasis_(new Date(), slackAsOf, day, false));
-        return {route, ownTasks, message:update.text, seen, shownSlack:fresh, slackSection:'', effectiveSlot, afternoon:true, quiet:update.quiet};
+          formatBriefingBasis_(new Date(), slackAsOf, day, withCalendar), meetings);
+        return {route, ownTasks, message:update.text, seen, shownSlack:fresh, slackSection:'', effectiveSlot, afternoon:true,
+          quiet:update.quiet, calendarFailure};
       }
       const shownSlack = includeSlack ? ownSlack : [];
       let message = formatPersonalWorkBriefing_(route.pm, rows, day, trends[route.pm], effectiveSlot);
@@ -277,12 +291,13 @@ function sendPmBriefings_(updatedTest, includeSlack, scheduledSlot, _unused, del
       }
       let calendarFailure = false;
       if (packet.afternoon) {
-        // 14:00은 회의·점심·날씨·한마디 없이 바로 보낸다. 새 소식이 있을 때만 피드백 버튼.
+        // 14:00은 점심·날씨·한마디 없이 바로 보낸다(회의는 문안 준비 때 붙임). 새 소식이 있을 때만 피드백 버튼.
         let blocks = buildBriefingBlocks_(message);
         if (!packet.quiet) blocks = appendFeedbackButtons_(blocks, props, day, effectiveSlot);
         postSlackDm_(token, route.id, message, slot, blocks);
         doneIds.push(route.id);
-        log.appendRow([new Date(), slot, route.pm, ownTasks.map(row => row[0]).join(', '), slackFailure ? 'sent-sheet-only' : 'sent']);
+        log.appendRow([new Date(), slot, route.pm, ownTasks.map(row => row[0]).join(', '),
+          packet.calendarFailure ? 'sent-calendar-unavailable' : slackFailure ? 'sent-sheet-only' : 'sent']);
         if (includeSlack && !slackFailure && shownSlack.length) {
           try { markSlackDigestSeen_(props, route.id, seen, shownSlack, slackItems.filter(item => item.pm === route.pm)); }
           catch (error) { console.log('Slack 발송 성공, 멘션 표시 이력 저장 실패 | DM 재전송하지 않음'); }

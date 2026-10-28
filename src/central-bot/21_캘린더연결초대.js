@@ -54,11 +54,16 @@ function calendarInviteSetup_(props) {
   return {url,routes};
 }
 function calendarInviteMessage_(route,url) {
-  return '📅 *'+escapeSlack_(route.pm)+'* 님, 개인 일정 브리핑을 연결해주세요.\n\n'+
-    '<'+url+'|회사 Google 계정으로 내 일정 연결>\n\n'+
-    '개인 캘린더 · PM Team Schedule · PM Review & Delivery · 대한민국의 휴일을 읽습니다.\n'+
-    '본인 계정으로 Google 권한을 승인한 뒤 화면에서 동의하고 연결을 완료해주세요.\n'+
-    '연결되면 확인 DM을 보내고, 평일 10:30·14:00·17:00 부근 개인 업무 브리핑에 내 회의를 함께 넣어 드립니다. Google Tasks는 읽지 않습니다.\n'+
+  return '📅 *'+escapeSlack_(route.pm)+'* 님, 업무 브리핑에 내 회의도 함께 받아보세요.\n\n'+
+    '👉 <'+url+'|회사 Google 계정으로 내 일정 연결하기>\n\n'+
+    '*가져오는 일정*\n'+
+    '• 내 개인 캘린더 일정\n'+
+    '• 공유 캘린더(PM Team Schedule · PM Review & Delivery) 중 *내가 초대됐거나 만든 일정*만\n'+
+    '다른 사람만 초대된 일정·팀 공통 일정·불참한 회의는 가져오지 않고, 비공개 일정은 제목을 가립니다.\n\n'+
+    '*연결 방법*\n'+
+    '1. 위 링크를 열고 본인 계정으로 Google 권한을 승인해요\n'+
+    '2. 화면에서 동의를 체크하고 *동의하고 Slack 브리핑 연결*을 눌러요\n\n'+
+    '연결되면 확인 DM을 보내 드리고, 평일 10:30·14:00·17:00 브리핑에 회의가 함께 나옵니다.\n'+
     CALENDAR_LINK_TIP;
 }
 function previewCalendarConnectionInvites() {
@@ -149,7 +154,8 @@ function calendarOnboardingNotice_(props,route,record,state) {
   props.setProperty(calendarInviteKey_(route),JSON.stringify(record));
   const sources=state.sources||[],ok=sources.filter(source=>source.status==='ok').length;
   const message='✅ *'+escapeSlack_(route.pm)+'* 님, 개인 일정 브리핑 연결이 완료됐습니다.\n'+
-    '평일 10:30(오전) · 14:00(새 소식만) · 17:00(마무리) 부근에 업무·회의·Slack 요청을 모아 DM으로 보내 드립니다.\n'+
+    '평일 10:30(오전) · 14:00(새 소식·남은 회의) · 17:00(마무리) 부근에 업무·회의·Slack 요청을 모아 DM으로 보내 드립니다.\n'+
+    '회의는 내 개인 캘린더 일정과 공유 캘린더에서 내가 초대됐거나 만든 일정만 가져옵니다.\n'+
     '캘린더 조회 '+ok+'/4'+(ok<4?' · 일부 캘린더의 구독·읽기 권한은 연결 화면에서 확인해주세요.':'');
   try {
     postSlackDm_(requiredProperty_(props,'SLACK_BOT_TOKEN'),route.slackId,message,slot);
