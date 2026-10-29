@@ -34,7 +34,8 @@ function cleanupBotStorage() {
 function adminInfoFromJob_(job) {
   return {state:job.state, total:job.total, pendingIds:job.pendingIds || [], failedIds:job.failedIds || [],
     failures:job.failures || {}, failed:job.failed || 0, error:job.lastError || '',
-    elapsedMs:job.elapsedMs || 0, batches:job.batches || 0, maxBatchMs:job.maxBatchMs || 0, maxBatchSize:job.maxBatchSize || 0};
+    elapsedMs:job.elapsedMs || 0, batches:job.batches || 0, maxBatchMs:job.maxBatchMs || 0, maxBatchSize:job.maxBatchSize || 0,
+    maxPhaseMs:job.maxPhaseMs || {}};
 }
 
 function notifyAdminRoundSummary_(slot, info) {
@@ -97,11 +98,15 @@ function buildAdminRoundSummary_(props, slot, info, now) {
       todo.push('실행 로그에서 "발송 처리 중단" 줄을 확인하세요.');
     }
     if (info.batches) {
-      // 한 묶음(최대 8명)은 5분 안에 끝나야 한다(Apps Script 6분 제한). 4분을 넘으면 미리 알린다.
+      // 한 묶음은 최대 4명. 진행 중 호출은 즉시 중단할 수 없어 4분 초과 여부도 알린다.
       const perPm = info.maxBatchSize ? Math.round(info.maxBatchMs / info.maxBatchSize / 1000) : 0;
       lines.push('• 처리 시간 ' + Math.round(info.elapsedMs / 1000) + '초 · 묶음 ' + info.batches + '개 · 가장 긴 묶음 ' +
         Math.round(info.maxBatchMs / 1000) + '초' + (perPm ? ' (1명당 약 ' + perPm + '초)' : '') + (info.maxBatchMs > 240000 ? ' · ⚠️ 4분 초과' : ''));
-      if (info.maxBatchMs > 240000) todo.push('묶음 하나가 4분을 넘었습니다. 인원이 늘면 6분 제한에 걸릴 수 있어 묶음 크기(8명) 축소를 검토하세요.');
+      if (info.maxBatchMs > 240000) todo.push('묶음 하나가 4분을 넘었습니다. 현재 4명씩 처리합니다. 아래 구간별 시간과 실행 로그에서 느린 조회·전송을 확인하세요.');
+      const phases=info.maxPhaseMs||{};
+      if(Object.keys(phases).length) lines.push('• 구간별 최대: '+
+        [['workMs','업무·명단'],['slackMs','Slack 준비'],['prepareMs','문안 준비'],['deliveryMs','개인별 구성·발송']]
+          .filter(([key])=>Number.isFinite(phases[key])).map(([key,label])=>label+' '+Math.round(phases[key]/1000)+'초').join(' · '));
     }
     if (pending.length) {
       lines.push('• 미발송: ' + names(pending.map(nameOf)));
@@ -109,12 +114,14 @@ function buildAdminRoundSummary_(props, slot, info, now) {
     }
   }
 
-  // 1-1) 명단 문제(이 PM만 제외하거나 업무 없이 보냄)
+  // 1-1) 실제 수신자 명단 문제만 표시. 담당 탭이 없는 팀원은 정상 대상이다.
   try {
     const issues = JSON.parse(props.getProperty('ROUTE_ISSUES') || 'null');
-    if (issues && issues.day === day && issues.slot === slot && issues.items.length) {
-      lines.push('• 명단 확인 필요: ' + issues.items.map(escapeSlack_).join(' / '));
-      todo.push('봇 시트 BOT_USERS에서 위 PM의 A열 이름(업무 시트 담당 탭 이름과 같게)·B열 Slack ID·중복 줄을 확인하세요.');
+    const items = issues && Array.isArray(issues.items) ? issues.items.filter(item =>
+      !String(item).includes('업무 시트 담당자 이름과 맞지 않음')) : [];
+    if (issues && issues.day === day && issues.slot === slot && items.length) {
+      lines.push('• 명단 확인 필요: ' + items.map(escapeSlack_).join(' / '));
+      todo.push('봇 시트 BOT_USERS에서 위 수신자의 A열 이름·B열 Slack ID·중복 줄을 확인하세요.');
     }
   } catch (_) {}
 

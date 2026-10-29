@@ -141,17 +141,21 @@ console.log('Admin round summary, hints, once-per-slot, cleanup and start-failur
   assert.doesNotMatch(t, /4분 초과/);
   const slow = g.ctx.buildAdminRoundSummary_(g.props, '11:00', {state: 'complete', total: 8, pendingIds: [], failedIds: [],
     elapsedMs: 250000, batches: 1, maxBatchMs: 250000, maxBatchSize: 8}, new Date(at('11:05'))).text;
-  assert.match(slow, /⚠️ 4분 초과[\s\S]*묶음 크기\(8명\) 축소/);
+  assert.match(slow, /⚠️ 4분 초과[\s\S]*현재 4명씩 처리/);
+  const measured=g.ctx.buildAdminRoundSummary_(g.props,'11:00',{state:'complete',total:4,pendingIds:[],failedIds:[],
+    elapsedMs:120000,batches:1,maxBatchMs:120000,maxBatchSize:4,
+    maxPhaseMs:{workMs:80000,slackMs:10000,prepareMs:5000,deliveryMs:25000}},new Date(at('11:05'))).text;
+  assert.match(measured,/구간별 최대: 업무·명단 80초 · Slack 준비 10초 · 문안 준비 5초 · 개인별 구성·발송 25초/);
   console.log('Round timing summary checks passed');
 }
 
-// 명단 문제(그 PM만 제외·업무 없이 발송)를 같은 날 같은 회차 요약에 보여 준다.
+// 실제 ID·중복 명단 문제는 알리되, 예전 비언어쌍 PM 경고 이력은 표시하지 않는다.
 {
-  const g = fixture({ROUTE_ISSUES: JSON.stringify({day: '2026-10-23', slot: '11:00', items: ['PM C: 업무 시트 담당자 이름과 맞지 않음 → 업무 없이 발송']})});
+  const g = fixture({ROUTE_ISSUES: JSON.stringify({day: '2026-10-23', slot: '11:00', items: ['PM C: Slack ID 형식 오류 → 이번 회차 제외', 'PM D: 업무 시트 담당자 이름과 맞지 않음 → 업무 없이 발송']})});
   g.ctx.selfCalendarRegistry_ = () => [];
   const t = g.ctx.buildAdminRoundSummary_(g.props, '11:00', {state: 'complete', total: 1, pendingIds: [], failedIds: []}, new Date(at('10:40'))).text;
-  assert.match(t, /• 명단 확인 필요: PM C: 업무 시트 담당자 이름과 맞지 않음/);
-  assert.match(t, /A열 이름\(업무 시트 담당 탭 이름과 같게\)/);
+  assert.match(t, /• 명단 확인 필요: PM C: Slack ID 형식 오류/);
+  assert.doesNotMatch(t, /PM D|업무 시트 담당 탭 이름과 같게|업무 없이 발송/);
   assert.doesNotMatch(g.ctx.buildAdminRoundSummary_(g.props, '17:00', {state: 'complete', total: 1, pendingIds: [], failedIds: []}, new Date(at('17:05'))).text, /명단 확인 필요/, 'other rounds unaffected');
   console.log('Roster issues appear in the round summary');
 }

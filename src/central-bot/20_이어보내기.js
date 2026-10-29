@@ -1,14 +1,16 @@
 /**
  * 20. 연결 PM 정기 DM 이어 보내기 — 연결 PM 확대 모드에서만 사용.
- * - startConnectedBriefingRound_: 회차(10:30·14:00·17:00)별 수신자 명단 고정·회차 생성. 8명씩 처리.
+ * - startConnectedBriefingRound_: 회차(10:30·14:00·17:00)별 수신자 명단 고정·회차 생성. 4명씩 처리.
  * - resumeConnectedBriefingSend(): 예약된 미처리 대상만 실제 DM 발송. 수동 실행도 발송 가능.
  *   날짜/회차/현재 승인/연결/발송 여부 재검사. 결과 불명확 건은 자동 재전송하지 않는다.
  * - previewConnectedSendProgress(): 대기 수·시도 수·상태 조회만. ID·내용 출력 없음.
  * - scheduleConnectedSendResume_/clearConnectedSendResume_: 현재 계정의 전용 일회성 트리거만 관리.
  * - enabledConnectedSend_: 관리자 허용 및 기존 실행 계정/봇 대상 확인.
- * - 제한: 회차 시작 20분 이내·최대 6회 시도. 다음날/다른 회차로 이월하지 않는다.
+ * - 제한: 회차 시작 20분 이내·최대 12회 시도. 다음날/다른 회차로 이월하지 않는다.
  * - 실제 정기 실행 시에만 이어 보내기 트리거를 생성. 업로드만으로 설치/발송하지 않음.
  */
+const CONNECTED_SEND_LIMITS = Object.freeze({batchSize:4,maxAttempts:12});
+
 function enabledConnectedSend_(props) {
   if(props.getProperty('ENABLE_PM_SEND')!=='true'||props.getProperty('ENABLE_CONNECTED_PM_SEND')!=='true'||
       props.getProperty('ENABLE_SELF_CALENDAR_PIPELINE')!=='true') return false;
@@ -45,7 +47,7 @@ function resumeConnectedBriefingSend() {
       props.setProperty('CONNECTED_SEND_JOB',JSON.stringify(job));
     }
     if(!job||!['pending','running'].includes(job.state)) {clearConnectedSendResume_();return;}
-    if(!enabledConnectedSend_(props)||job.day!==day||now>=job.expiresAt||job.attempts>=6) {
+    if(!enabledConnectedSend_(props)||job.day!==day||now>=job.expiresAt||job.attempts>=CONNECTED_SEND_LIMITS.maxAttempts) {
       job.state='stopped';props.setProperty('CONNECTED_SEND_JOB',JSON.stringify(job));clearConnectedSendResume_();
       console.log('이어 보내기 중지: 허용/날짜/기한/시도 상한 확인 | 미처리 '+job.pendingIds.length+'명');
       if(job.day===day) notifyAdminRoundSummary_(job.slot,adminInfoFromJob_(job));return;
@@ -59,8 +61,8 @@ function resumeConnectedBriefingSend() {
     scheduleConnectedSendResume_(390000);
     props.setProperty('CONNECTED_SEND_JOB',JSON.stringify(job));
   } finally {lock.releaseLock();}
-  let report,prepError='';const batchStarted=Date.now(),batchSize=Math.min(8,job.pendingIds.length);
-  try {report=sendPmBriefings_(false,true,job.slot,undefined,{recipientIds:job.pendingIds.slice(0,8)});}
+  let report,prepError='';const batchStarted=Date.now(),batchSize=Math.min(CONNECTED_SEND_LIMITS.batchSize,job.pendingIds.length);
+  try {report=sendPmBriefings_(false,true,job.slot,undefined,{recipientIds:job.pendingIds.slice(0,batchSize)});}
   catch (error) {prepError=String(error&&error.message||error).slice(0,160);console.log('회차 준비/처리 실패: 미처리 대상을 유지하고 제한적으로 재시도 | '+prepError);}
   if(!lock.tryLock(30000)) return; // 미리 예약한 복구 실행이 이어 처리한다.
   try {
@@ -75,12 +77,19 @@ function resumeConnectedBriefingSend() {
     // 실행 시간 기록: 25명 확대 전 6분 실행 제한 여유를 관리자 요약에서 본다.
     const batchMs=Date.now()-batchStarted;
     current.elapsedMs=(current.elapsedMs||0)+batchMs;current.batches=(current.batches||0)+1;
-    current.maxBatchMs=Math.max(current.maxBatchMs||0,batchMs);current.maxBatchSize=Math.max(current.maxBatchSize||0,batchSize);
+    if(batchMs>=(current.maxBatchMs||0)) {current.maxBatchMs=batchMs;current.maxBatchSize=batchSize;}
+    if(report&&report.timing) {
+      current.maxPhaseMs=current.maxPhaseMs||{};
+      for(const key of ['workMs','slackMs','prepareMs','deliveryMs']) {
+        const value=Number(report.timing[key]);
+        if(Number.isFinite(value)&&value>=0)current.maxPhaseMs[key]=Math.max(current.maxPhaseMs[key]||0,value);
+      }
+    }
     current.leaseUntil=0;current.state=current.pendingIds.length?'pending':current.failed?'complete-with-errors':'complete';
     const delay=Math.max(60000,report&&report.retryAfterMs||0);
     current.notBefore=Date.now()+delay;
     if(!enabledConnectedSend_(props)) current.state='stopped';
-    if(current.pendingIds.length&&(Date.now()+delay>=current.expiresAt||current.attempts>=6)) current.state='stopped';
+    if(current.pendingIds.length&&(Date.now()+delay>=current.expiresAt||current.attempts>=CONNECTED_SEND_LIMITS.maxAttempts)) current.state='stopped';
     props.setProperty('CONNECTED_SEND_JOB',JSON.stringify(current));
     if(current.state==='pending') scheduleConnectedSendResume_(delay);else clearConnectedSendResume_();
     console.log('정기 DM 회차 상태 '+current.state+' | 남음 '+current.pendingIds.length+'명 | 확인 필요 '+current.failed+'명');

@@ -124,19 +124,21 @@ function refreshBotTasks() {
   return summary;
 }
 
-// 이어 보내기 묶음(8명씩)마다 원천 4개 시트를 다시 읽지 않도록, 같은 날 15분 안의 갱신 결과를 재사용한다.
+// 이어 보내기 묶음(4명씩)마다 원천 4개 시트를 다시 읽지 않도록, 같은 날 15분 안의 갱신 결과를 재사용한다.
 function refreshBotTasksForRound_(props) {
   const day = Utilities.formatDate(new Date(), BRIEFING.timezone, 'yyyy-MM-dd');
   let cached = null;
   try { cached = JSON.parse(props.getProperty('BOT_TASKS_REFRESHED') || 'null'); } catch (_) {}
   if (cached && cached.day === day && Date.now() - cached.at < 15 * 60000 && Array.isArray(cached.pmNames)) {
-    return {pmNames:cached.pmNames, emptyPmTabs:cached.emptyPmTabs || [], sourceFailures:cached.sourceFailures || [], reused:true};
+    return {pmNames:cached.pmNames, emptyPmTabs:cached.emptyPmTabs || [], sourceFailures:cached.sourceFailures || [],
+      keptPrefixes:cached.keptPrefixes || [], reused:true};
   }
   const summary = refreshBotTasks();
   // 사라진 담당 탭 경고는 같은 날 안에서는 유지한다(다음 회차 갱신에서 직전 값이 새 목록으로 바뀌어도 그날 요약에 남게).
   const missing = [...new Set((summary.missingPmTabs || []).concat(cached && cached.day === day ? cached.missingPmTabs || [] : []))];
   try { props.setProperty('BOT_TASKS_REFRESHED', JSON.stringify({day, at:Date.now(), pmNames:summary.pmNames,
-    emptyPmTabs:summary.emptyPmTabs || [], missingPmTabs:missing, sourceFailures:summary.sourceFailures || []})); }
+    emptyPmTabs:summary.emptyPmTabs || [], missingPmTabs:missing, sourceFailures:summary.sourceFailures || [],
+    keptPrefixes:summary.keptPrefixes || []})); }
   catch (error) { console.log('업무 갱신 시각 저장 생략 | ' + error.message); }
   return summary;
 }
@@ -160,6 +162,8 @@ function refreshBotTasks_({ bot, sourceId }) {
   syncBotUsers_(users, Object.keys(collected.byPm)
     .concat(Object.keys(headsUp.byPm), pmDashboards.map(item => item.pm),
       abuse.concat(pmReviews, testReviews).map(row => row[1])));
+  // 정리 실패가 업무 갱신을 막지 않게 따로 감싼다.
+  try { pruneBotTasks_(tasks, new Date()); } catch (error) { console.log('BOT_TASKS 정리 생략 | ' + error.message); }
   syncBotTasks_(tasks, detected.concat(upcoming, abuse, pmReviews, testReviews), failures.flatMap(item => item.prefixes));
   failures.forEach(item => console.warn('업무 시트 읽기 실패 → 직전 결과 유지: ' + item.label + ' | ' + item.message));
   // 담당 탭을 못 읽으면 담당 PM 목록도 직전 값을 쓴다(모든 PM이 '이름 불일치'로 보이지 않게).
@@ -194,7 +198,8 @@ function refreshBotTasks_({ bot, sourceId }) {
     '건, 테스트지 검토 미완료 ' + testReviews.length + '건');
   return { tasks: detected.length + upcoming.length + abuse.length + pmReviews.length + testReviews.length,
     unassigned: collected.unassigned.length + headsUp.unassigned.length,
-    pmNames, emptyPmTabs, missingPmTabs, sourceFailures: failures.map(item => item.label + ': ' + item.message) };
+    pmNames, emptyPmTabs, missingPmTabs, sourceFailures: failures.map(item => item.label + ': ' + item.message),
+    keptPrefixes: [...new Set(failures.flatMap(item => item.prefixes))] };
 }
 
 function buildHaCvUpcomingTasks_(pm, records, day, sourceUrl, gid, now) {
@@ -349,6 +354,27 @@ function syncBotUsers_(sheet, owners) {
       known.add(pm);
     }
   });
+}
+
+// 사라진 업무는 비활성으로만 남기므로 BOT_TASKS가 계속 커진다(갱신마다 전체를 읽고 씀). 30일 넘게 다시 보이지 않은
+// 비활성 행 중 사람이 고친 칸(P:R)이 빈 행만 지운다. 매 회차 쓰기를 늘리지 않게 50행 이상 모였을 때 한 번에 정리한다.
+const BOT_TASKS_RETENTION = Object.freeze({days:30, minBatch:50});
+function pruneBotTasks_(sheet, now) {
+  const lastRow = sheet.getLastRow();
+  if (lastRow < 2) return 0;
+  const width = BOT_WORKBOOK.taskHeaders.length;
+  const rows = sheet.getRange(2, 1, lastRow - 1, width).getValues();
+  const cutoff = now.getTime() - BOT_TASKS_RETENTION.days * 86400000;
+  const blank = value => !String(value == null ? '' : value).trim();
+  const prunable = row => row[12] === false && row[13] instanceof Date && row[13].getTime() < cutoff &&
+    blank(row[15]) && blank(row[16]) && blank(row[17]);
+  const keep = rows.filter(row => !prunable(row));
+  const removed = rows.length - keep.length;
+  if (removed < BOT_TASKS_RETENTION.minBatch) return 0;
+  if (keep.length) sheet.getRange(2, 1, keep.length, width).setValues(keep);
+  sheet.deleteRows(keep.length + 2, removed);
+  console.log('BOT_TASKS 오래된 비활성 업무 ' + removed + '행 정리(' + BOT_TASKS_RETENTION.days + '일 넘게 안 보임) | 보존 ' + keep.length + '행');
+  return removed;
 }
 
 // keepPrefixes: 이번에 읽지 못한 업무 종류(키 앞부분). 그 종류는 비활성화하지 않고 직전 결과를 그대로 둔다.

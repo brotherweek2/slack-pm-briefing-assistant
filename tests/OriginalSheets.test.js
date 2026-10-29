@@ -171,4 +171,24 @@ assert.deepEqual([...f.values], [...beforeInspect], 'inspect changes no properti
   assert.equal(written[1][12], false, 'read PM_REVIEW that disappeared is deactivated');
 }
 
+// 7) BOT_TASKS 정리: 30일 넘게 안 보인 비활성 행만, 사람이 고친 칸이 있으면 남기고, 50행 이상일 때만 한 번에 지운다.
+{
+  const g = fixture();
+  const VDate = vm.runInContext('Date', g.ctx); // 코드 안의 instanceof Date와 같은 Date를 쓴다
+  const now = new VDate('2026-10-29T10:00:00+09:00'), old = new VDate('2026-09-01T10:00:00+09:00'), recent = new VDate('2026-10-20T10:00:00+09:00');
+  const make = (key, active, seen, note) => [key, 'PM A'].concat(Array(10).fill(''), [active, seen, 'PENDING', note || '', '', '']);
+  const build = n => [make('A|active', true, old), make('B|recent', false, recent), make('C|edited', false, old, '수정함')]
+    .concat(Array.from({length: n}, (_, i) => make('OLD|' + i, false, old)));
+  const sheetOf = rows => ({rows, getLastRow: () => rows.length + 1,
+    getRange: (r, c, h, w) => ({getValues: () => rows.slice(r - 2, r - 2 + h).map(x => x.slice(c - 1, c - 1 + w)),
+      setValues: v => v.forEach((x, i) => { rows[r - 2 + i] = x.slice(); })}),
+    deleteRows: (start, count) => rows.splice(start - 2, count)});
+  const few = sheetOf(build(49));
+  assert.equal(g.ctx.pruneBotTasks_(few, now), 0, 'fewer than 50 prunable rows: no write');
+  assert.equal(few.rows.length, 52);
+  const many = sheetOf(build(60));
+  assert.equal(g.ctx.pruneBotTasks_(many, now), 60);
+  assert.deepEqual(many.rows.map(r => r[0]), ['A|active', 'B|recent', 'C|edited'], 'active, recent and hand-edited rows are kept');
+}
+
 console.log('Original sheet preview, switch and revert checks passed (no writes to work sheets)');

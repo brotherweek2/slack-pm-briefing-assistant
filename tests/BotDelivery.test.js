@@ -42,7 +42,7 @@ const context = vm.createContext({ briefingLeaveRoutes_: () => [],
   SpreadsheetApp: { openById: () => ({}) },
   LockService: { getScriptLock: () => ({ tryLock: () => true, releaseLock: () => {} }) },
   Utilities: { formatDate: () => today },
-  refreshBotTasks: () => ({ pmNames: ['PM A', 'PM B', 'PM C'] }),
+  refreshBotTasks: () => ({ pmNames: ['PM A', 'PM B'] }),
   saveHaCvDailyHistory_: () => ({}),
   formatHaCvDailyTrend_: () => '',
   requireBotSheet_: (_bot, name) => sheets[name],
@@ -71,6 +71,7 @@ assert.doesNotMatch(sent[1].message, /#gid=123/);
 assert.doesNotMatch(sent[1].message, /en_US-ja_JP|PM A/);
 assert.equal(sent[2].id, 'U0000000005');
 assert.match(sent[2].message, /📌 \*오늘 확인할 업무\*\n• 확인할 특이사항 없음/);
+assert.doesNotMatch(sent[2].message, /담당자 이름을 찾지 못해|관리자에게 알렸어요/, 'recipient without a language-pair tab gets no false warning');
 assert.doesNotMatch(sent[2].message, /en_US-ja_JP|de_DE-fr_FR/);
 assert.equal(logRows.length, 3);
 send();

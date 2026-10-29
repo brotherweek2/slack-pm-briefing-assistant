@@ -31,7 +31,7 @@
  *
  * 01-05. PM 수신 경로 [내부]
  * - buildPmSlackRoutes_(userRows, owners, issues): BOT_USERS 발송 대상. 중복·잘못된 Slack ID는 그 PM만 제외,
- *   업무 시트에 없는 이름은 업무 없이 발송(unknownOwner). 문제는 issues에 모아 관리자 요약에 보인다.
+ *   담당 탭이 없는 수신자도 정상 대상이다. 본인 배정 업무만 표시하며, 탭 부재는 오류로 알리지 않는다.
  *
  * 01-06. 오전 DM 미리보기 [직접 실행]
  * - 함수: previewMyMorningBriefing()
@@ -126,7 +126,8 @@ function sendPmBriefings_(updatedTest, includeSlack, scheduledSlot, _unused, del
         props.getProperty('ENABLE_CALENDAR_BRIEFING')!=='true') throw new Error('본인 통합 시험은 개인 캘린더 연결 모드에서만 실행하세요.');
     deliveryOptions=null; // 정기 발송 묶음 옵션과 섞지 않는다.
   }
-  const deadline = Date.now() + 300000;
+  // 정기 묶음은 4분 이후 새 전송을 시작하지 않아 6분 강제 종료 전 기록·잠금 해제 여유를 둔다.
+  const deadline = Date.now() + (deliveryOptions ? 240000 : 300000);
   if (props.getProperty('ENABLE_PM_SEND') !== 'true') {
     throw new Error('발송 중지: ENABLE_PM_SEND가 true가 아닙니다.');
   }
@@ -142,6 +143,7 @@ function sendPmBriefings_(updatedTest, includeSlack, scheduledSlot, _unused, del
       selfRoute=matches[0];
     }
     // 정기 묶음 발송은 첫 묶음에서 갱신한 업무를 15분 동안 재사용한다(묶음마다 원천 재조회 방지).
+    const workStarted=Date.now();
     const summary = deliveryOptions ? refreshBotTasksForRound_(props) : refreshBotTasks();
     // 업무 시트 하나를 못 읽었으면 그 업무는 직전 결과다. 기준 줄 아래에 한 줄로 알린다(시트 이름만, 오류 문구는 관리자 요약).
     const sourceNote = (summary.sourceFailures || []).length ? '\n_⚠️ ' + [...new Set(summary.sourceFailures
@@ -159,7 +161,7 @@ function sendPmBriefings_(updatedTest, includeSlack, scheduledSlot, _unused, del
     const routeIssues = [];
     let routes = buildPmSlackRoutes_(userRows, owners, routeIssues);
     // 관리자 요약이 오늘 명단 문제를 보여 줄 수 있게 남긴다(정기 발송만).
-    if (scheduledSlot && routeIssues.length) {
+    if (scheduledSlot && (routeIssues.length || props.getProperty('ROUTE_ISSUES'))) {
       try { props.setProperty('ROUTE_ISSUES', JSON.stringify({day, slot:scheduledSlot, items:routeIssues.slice(0, 20)})); } catch (_) {}
     }
     if(selfTest) routes=routes.filter(route=>route.id===selfRoute.slackId&&route.pm===selfRoute.pm);
@@ -168,7 +170,7 @@ function sendPmBriefings_(updatedTest, includeSlack, scheduledSlot, _unused, del
       routes = selfCalendarFilterRoutes_(routes, props);
     }
     if(deliveryOptions) {
-      if(!scheduledSlot||!Array.isArray(deliveryOptions.recipientIds)||deliveryOptions.recipientIds.length>8) throw new Error('정기 발송 묶음 설정 오류');
+      if(!scheduledSlot||!Array.isArray(deliveryOptions.recipientIds)||deliveryOptions.recipientIds.length>4) throw new Error('정기 발송 묶음 설정 오류');
       routes=routes.filter(route=>deliveryOptions.recipientIds.includes(route.id));
     }
     // 연차인 PM은 정기 회차에서 뺀다(28번). 끝난 것으로 처리해 이어 보내기 대상에 남기지 않는다.
@@ -191,6 +193,8 @@ function sendPmBriefings_(updatedTest, includeSlack, scheduledSlot, _unused, del
     }
     // 모든 수신자와 문안을 먼저 검사한 뒤 전송한다. 한 PM의 오류로 앞선 PM에만
     // 메시지가 간 상황을 줄이고, 실제 전송 성공분은 즉시 로그에 남긴다.
+    const timing={workMs:Date.now()-workStarted};
+    const slackStarted=Date.now();
     const token = requiredProperty_(props, 'SLACK_BOT_TOKEN');
     let slackItems = [];
     let slackAsOf = '';
@@ -215,13 +219,18 @@ function sendPmBriefings_(updatedTest, includeSlack, scheduledSlot, _unused, del
         console.log('Slack 확인사항 제외 · ' + slackFailure + ' | 원인: ' + error.message);
       }
     }
+    timing.slackMs=Date.now()-slackStarted;
+    const prepareStarted=Date.now();
     const prior = retainBriefingSendLog_(log, readBotRows_(log, BOT_WORKBOOK.logHeaders.length), day);
     const packets = routes.map(route => {
      // 한 PM의 문안 준비 오류가 다른 PM 발송을 막지 않게 PM별로 감싼다.
      try {
+      if(deliveryOptions&&Date.now()>=deadline)return {route,deferred:true};
       const ownTasks = rows.filter(row => row[12] === true &&
         String(row[1] || '').trim() === route.pm && isHaCvBriefingTask_(row[0]));
-      assertFreshPilotTasks_(ownTasks, day);
+      // 이번에 읽지 못해 직전 결과로 둔 업무 종류는 오늘 갱신 검사에서 뺀다(그 PM의 DM이 통째로 막히지 않게).
+      const kept = summary.keptPrefixes || [];
+      assertFreshPilotTasks_(ownTasks.filter(row => !kept.some(prefix => String(row[0]).startsWith(prefix))), day);
       const seen = includeSlack && !slackFailure ? readSlackDigestSeen_(props, route.id) : [];
       const effectiveSlot = forcedSlot || (scheduledSlot === '14:00' ? '14:00' : scheduledSlot === '17:00' || !scheduledSlot &&
         Number(Utilities.formatDate(new Date(), BRIEFING.timezone, 'HH')) >= 17 ? '17:00' : '11:00');
@@ -251,8 +260,6 @@ function sendPmBriefings_(updatedTest, includeSlack, scheduledSlot, _unused, del
       }
       const shownSlack = includeSlack ? ownSlack : [];
       let message = formatPersonalWorkBriefing_(route.pm, rows, day, trends[route.pm], effectiveSlot);
-      if (route.unknownOwner) message = message.replace('• 확인할 특이사항 없음',
-        '• ⚠️ 업무 시트에서 담당자 이름을 찾지 못해 업무를 표시하지 못했어요 (관리자에게 알렸어요)');
       let slackSection = '';
       if (includeSlack) {
         // 시트 업무와 같은 종류의 Slack 항목은 업무 줄 아래로 옮긴다.
@@ -277,12 +284,14 @@ function sendPmBriefings_(updatedTest, includeSlack, scheduledSlot, _unused, del
       'manual-test-slack-digest' : updatedTest ? 'manual-test-resend' : 'manual-personal';
     let phraseCatalog;
     let lunchCatalog;
+    timing.prepareMs=Date.now()-prepareStarted;
+    const deliveryStarted=Date.now();
     let lunchMate = null; // 점심 메이트: 켠 PM 전원 기준으로 한 번만 계산(묶음이 달라도 같은 결과)
     const failures = [];
     for (const packet of packets) {
       const {route,ownTasks,seen,shownSlack,slackSection,effectiveSlot}=packet;
       let message=packet.message;
-      if (Date.now() >= deadline) { console.log('발송 실행 시간 상한: 미처리 대상은 이어 보내기 대상으로 유지'); break; }
+      if (packet.deferred || Date.now() >= deadline) { console.log('발송 실행 시간 상한: 미처리 대상은 이어 보내기 대상으로 유지'); break; }
       try {
       if (packet.prepError) throw packet.prepError;
       const alreadySent = prior.some(row => row[0] instanceof Date &&
@@ -297,6 +306,7 @@ function sendPmBriefings_(updatedTest, includeSlack, scheduledSlot, _unused, del
         // 14:00은 점심·날씨·한마디 없이 바로 보낸다(회의는 문안 준비 때 붙임). 새 소식이 있을 때만 피드백 버튼.
         let blocks = buildBriefingBlocks_(message);
         if (!packet.quiet) blocks = appendFeedbackButtons_(blocks, props, day, effectiveSlot);
+        if(deliveryOptions&&Date.now()>=deadline)break;
         postSlackDm_(token, route.id, message, slot, blocks);
         doneIds.push(route.id);
         log.appendRow([new Date(), slot, route.pm, ownTasks.map(row => row[0]).join(', '),
@@ -349,6 +359,7 @@ function sendPmBriefings_(updatedTest, includeSlack, scheduledSlot, _unused, del
       // 점심 메이트 버튼: Slack 버튼 응답 주소를 등록하고 ENABLE_LUNCH_MATE=true일 때만.
       if (lunch && props.getProperty('ENABLE_LUNCH_MATE') === 'true') blocks = insertLunchMateButton_(blocks, lunchMateButtonBlock_(lunchMateOn_(props, route.id)));
       blocks = appendFeedbackButtons_(blocks, props, day, effectiveSlot);
+      if(deliveryOptions&&Date.now()>=deadline)break;
       postSlackDm_(token, route.id, message, slot, blocks);
       doneIds.push(route.id);
       log.appendRow([new Date(), slot, route.pm, ownTasks.map(row => row[0]).join(', '),
@@ -377,7 +388,11 @@ function sendPmBriefings_(updatedTest, includeSlack, scheduledSlot, _unused, del
         console.log(route.pm + ' | 발송 처리 중단 | ' + error.message);
       }
     }
-    if(deliveryOptions) return {doneIds:[...new Set(doneIds)],failedIds:[...new Set(failedIds)],failureReasons,retryAfterMs};
+    if(deliveryOptions) {
+      timing.deliveryMs=Date.now()-deliveryStarted;
+      console.log('묶음 구간 시간(ms): '+JSON.stringify(timing));
+      return {doneIds:[...new Set(doneIds)],failedIds:[...new Set(failedIds)],failureReasons,retryAfterMs,timing};
+    }
     if (failures.length) throw new Error('일부 PM 처리 실패 ' + failures.length + '건: ' + failures.join(' / '));
   } finally {
     lock.releaseLock();
@@ -413,10 +428,10 @@ function describeSlackFailure_(error, props) {
 }
 
 // 명단 문제는 그 PM만 처리한다(전체 회차를 멈추지 않음). issues 배열을 주면 문제를 모아 돌려준다.
-// - 업무 시트 담당자 목록에 이름이 없음 → 보내되 업무 영역만 비움(unknownOwner). 이름을 탭 이름과 맞추면 해결.
+// - 업무 시트 담당자 목록에 이름이 없어도 정상 수신자다. 언어쌍 PM 외의 팀원도 사용한다.
+//   본인에게 배정된 검수·테스트 업무는 그대로 표시하며, 담당 탭 부재로 DM·관리자 경고를 만들지 않는다.
 // - Slack ID 형식 오류·같은 이름이나 같은 Slack ID가 두 줄 이상 → 그 PM(들)은 보내지 않음(잘못 보낼 위험).
 function buildPmSlackRoutes_(userRows, owners, issues) {
-  const knownOwners = new Set(owners);
   const note = text => { if (Array.isArray(issues)) issues.push(text); };
   const enabled = userRows.map(row => ({pm:String(row[0] || '').trim(), id:String(row[1] || '').trim(), on:row[2] === true}))
     .filter(row => row.pm);
@@ -428,7 +443,6 @@ function buildPmSlackRoutes_(userRows, owners, issues) {
     if (!/^[UW][A-Z0-9]{8,}$/.test(row.id)) { note(row.pm + ': Slack ID 형식 오류 → 이번 회차 제외'); return; }
     if (enabled.filter(other => other.on && other.id === row.id).length > 1) { note(row.pm + ': 같은 Slack ID가 다른 PM에도 있음 → 이번 회차 제외'); return; }
     const route = {pm:row.pm, id:row.id};
-    if (!knownOwners.has(row.pm)) { route.unknownOwner = true; note(row.pm + ': 업무 시트 담당자 이름과 맞지 않음 → 업무 없이 발송'); }
     routes.push(route);
   });
   return routes;

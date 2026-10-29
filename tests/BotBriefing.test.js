@@ -100,8 +100,11 @@ assert.equal(routes([['PM A', 'U0000000002', true], ['PM B', '', false]],
 const issues = [];
 assert.equal(routes([['PM A', 'U0000000002', true], ['PM B', 'U0000000002', true], ['PM C', 'U0000000003', true]], ['PM A', 'PM B', 'PM C'], issues).map(r => r.pm).join(), 'PM C', 'same Slack ID on two PMs → both skipped, others still sent');
 assert.match(issues.join(' / '), /PM A: 같은 Slack ID.*PM B: 같은 Slack ID/);
-const unknown = routes([['PM A', 'U0000000002', true]], ['PM B']);
-assert.equal(unknown.length, 1); assert.equal(unknown[0].unknownOwner, true, 'name not in work sheet → sent without work section');
+const nonLanguagePmIssues = [];
+const unknown = routes([['PM A', 'U0000000002', true]], ['PM B'], nonLanguagePmIssues);
+assert.equal(unknown.length, 1);
+assert.equal(unknown[0].unknownOwner, undefined, 'no work tab is normal for other team members');
+assert.deepEqual(nonLanguagePmIssues, [], 'no false admin roster warning for a recipient without a work tab');
 assert.equal(routes([['PM A', '', true], ['PM B', 'U0000000003', true]], ['PM A', 'PM B']).map(r => r.pm).join(), 'PM B', 'invalid Slack ID → only that PM skipped');
 assert.equal(routes([['PM A', 'U0000000002', true], ['PM A', 'U0000000003', true]], ['PM A']).length, 0, 'duplicate name rows → skipped');
 const ownOnly = formatAll('PM A', [own, other], '2026-10-07', null, 'send');
