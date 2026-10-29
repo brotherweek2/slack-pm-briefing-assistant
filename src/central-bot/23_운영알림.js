@@ -126,6 +126,17 @@ function buildAdminRoundSummary_(props, slot, info, now) {
       lines.push('• ⚠️ 담당 탭 형식 확인 필요: ' + names(empty.map(escapeSlack_)) + ' (프로젝트 0건)');
       todo.push('위 담당 탭의 프로젝트 칸 형식("번호 · M/D · 수량 · 최대 N배치")이 바뀌었는지 inspectOriginalSheetStructure로 확인하세요. 그동안 종료 임박·어뷰저가 빠집니다.');
     }
+    const missingTabs = refreshed && refreshed.day === day && Array.isArray(refreshed.missingPmTabs) ? refreshed.missingPmTabs : [];
+    if (missingTabs.length) {
+      lines.push('• ⚠️ 담당 탭이 사라짐: ' + names(missingTabs.map(escapeSlack_)) + ' (언어쌍 업무가 빠짐)');
+      todo.push('HA-CV 시트에서 위 PM의 담당 탭 이름이 바뀌었거나 지워졌는지 확인하세요. 의도한 변경(담당 해제)이면 그대로 두면 됩니다.');
+    }
+    // 업무 시트 하나를 못 읽은 경우: 회차는 보내고 그 업무만 직전 결과로 유지했다.
+    const failed = refreshed && refreshed.day === day && Array.isArray(refreshed.sourceFailures) ? refreshed.sourceFailures : [];
+    if (failed.length) {
+      lines.push('• ⚠️ 업무 시트 읽기 실패(직전 결과 유지): ' + failed.map(text => escapeSlack_(String(text).slice(0, 120))).join(' / '));
+      todo.push('원본의 탭 이름·머리글이 바뀌었는지 inspectOriginalSheetStructure로 확인하세요. 고치기 전까지 그 업무는 마지막으로 읽은 내용이 나갑니다.');
+    }
   } catch (_) {}
 
   // 1-2) 직전 회차가 아예 돌지 않았는지(트리거 누락·권한 만료 등). 연차로 건너뛴 기록도 실행한 것으로 본다.

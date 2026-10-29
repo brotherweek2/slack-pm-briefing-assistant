@@ -146,4 +146,29 @@ assert.match(report, /PM Review 1행: A=No \| B=언어쌍 \| C=Status/);
 assert.match(report, /■ 테스트지 관리 \(원본 칸 비어 있음 · 지금 시트\)/);
 assert.deepEqual([...f.values], [...beforeInspect], 'inspect changes no properties');
 
+// 6) 정기 갱신(tolerant): 원본 하나의 탭·머리글이 바뀌어도 나머지는 진행하고, 실패한 업무 종류만 알린다.
+//    미리보기·전환(tolerant 없음)은 그대로 바로 멈춘다.
+{
+  const g = fixture();
+  g.ctx.collectTestReviewTasks_ = () => { throw new Error('테스트 관리 연결 파일에 HT 테스트지 제작 관리 탭이 없습니다.'); };
+  assert.throws(() => g.ctx.collectAllWorkTasks_(g.ctx.SpreadsheetApp.openById(COPY), {id: 'pm'}, {id: 'test'}, new Date()), /탭이 없습니다/);
+  const ok = g.ctx.collectAllWorkTasks_(g.ctx.SpreadsheetApp.openById(COPY), {id: 'pm'}, {id: 'test'}, new Date(), {tolerant: true});
+  assert.deepEqual(ok.pmReviews.map(r => r[0]), ['PM_REVIEW|x'], 'other sources still read');
+  assert.equal(JSON.stringify(ok.failures.map(x => [x.label, x.prefixes.join()])), JSON.stringify([['테스트지 관리', 'TEST_REVIEW|']]));
+  // 시트를 못 연 경우(null)도 같은 방식. 담당 탭을 못 읽으면 HA-CV 업무 전체를 직전 결과로 둔다.
+  const noHacv = g.ctx.collectAllWorkTasks_(null, {id: 'pm'}, {id: 'test'}, new Date(), {tolerant: true});
+  assert.ok(noHacv.failures.some(x => x.label === 'HA-CV 담당 탭' && x.prefixes.includes('HACV_DUE_SOON|') && x.prefixes.includes('HACV_REVIEW|')));
+  assert.equal(noHacv.detected.length + noHacv.upcoming.length + noHacv.abuse.length, 0);
+  g.ctx.collectPmReviewTasks_ = () => { throw new Error('PM Review 탭이 없습니다.'); };
+  assert.throws(() => g.ctx.collectAllWorkTasks_(null, null, null, new Date(), {tolerant: true}), /하나도 읽지 못했습니다/);
+  // syncBotTasks_: 실패한 종류는 비활성화하지 않고, 읽은 종류는 평소처럼 사라진 후보를 끈다.
+  const rows = [['TEST_REVIEW|a', 'PM A'], ['PM_REVIEW|old', 'PM A']].map(r => r.concat(Array(10).fill(''), [true, '', 'PENDING', '', '', '']));
+  const written = [];
+  const tasks = {getLastRow: () => rows.length + 1, getRange: (r, c, h, w) => ({getValues: () => rows.map(x => x.slice(0, w)),
+    setValues: v => written.push(...v), setValue: () => {}, getDisplayValues: () => []})};
+  try { g.ctx.syncBotTasks_(tasks, [], ['TEST_REVIEW|']); } catch (_) { /* 이후 정렬 단계는 이 흉내에서 생략 */ }
+  assert.equal(written[0][12], true, 'unread TEST_REVIEW kept active');
+  assert.equal(written[1][12], false, 'read PM_REVIEW that disappeared is deactivated');
+}
+
 console.log('Original sheet preview, switch and revert checks passed (no writes to work sheets)');

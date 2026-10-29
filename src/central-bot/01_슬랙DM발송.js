@@ -143,6 +143,9 @@ function sendPmBriefings_(updatedTest, includeSlack, scheduledSlot, _unused, del
     }
     // 정기 묶음 발송은 첫 묶음에서 갱신한 업무를 15분 동안 재사용한다(묶음마다 원천 재조회 방지).
     const summary = deliveryOptions ? refreshBotTasksForRound_(props) : refreshBotTasks();
+    // 업무 시트 하나를 못 읽었으면 그 업무는 직전 결과다. 기준 줄 아래에 한 줄로 알린다(시트 이름만, 오류 문구는 관리자 요약).
+    const sourceNote = (summary.sourceFailures || []).length ? '\n_⚠️ ' + [...new Set(summary.sourceFailures
+      .map(text => String(text).split(':')[0]))].join(' · ') + ' 시트를 읽지 못해 해당 업무는 직전 확인 결과예요_' : '';
     const bot = SpreadsheetApp.openById(requiredProperty_(props, 'BOT_SPREADSHEET_ID'));
     const users = requireBotSheet_(bot, BOT_WORKBOOK.usersTab, BOT_WORKBOOK.userHeaders);
     const tasksSheet = requireBotSheet_(bot, BOT_WORKBOOK.tasksTab, BOT_WORKBOOK.taskHeaders);
@@ -242,7 +245,7 @@ function sendPmBriefings_(updatedTest, includeSlack, scheduledSlot, _unused, del
           }
         }
         const update = formatAfternoonUpdate_(route.pm, day, newRows, fresh, slackFailure,
-          formatBriefingBasis_(new Date(), slackAsOf, day, withCalendar), meetings);
+          formatBriefingBasis_(new Date(), slackAsOf, day, withCalendar) + sourceNote, meetings);
         return {route, ownTasks, message:update.text, seen, shownSlack:fresh, slackSection:'', effectiveSlot, afternoon:true,
           quiet:update.quiet, calendarFailure};
       }
@@ -262,7 +265,7 @@ function sendPmBriefings_(updatedTest, includeSlack, scheduledSlot, _unused, del
       message += formatWeeklyOutlook_(route.pm, rows, day, effectiveSlot);
       // 기준 시각은 정보 영역 끝에 한 줄로 둔다. 점심·한마디는 그 아래에 붙는다.
       slackSection += formatBriefingBasis_(new Date(), slackAsOf, day,
-        props.getProperty('ENABLE_CALENDAR_BRIEFING') === 'true');
+        props.getProperty('ENABLE_CALENDAR_BRIEFING') === 'true') + sourceNote;
       return { route, ownTasks, message, seen, shownSlack, slackSection, effectiveSlot };
      } catch (error) { return {route, prepError:error}; }
     });

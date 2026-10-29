@@ -51,7 +51,8 @@
  * - syncBotUsers_(sheet, owners): 새 담당자만 BOT_USERS에 추가하고 기존 ID·발송 설정은 보존한다. 영향: BOT_USERS 새 담당자 행 추가.
  *
  * 05-14. 업무 후보 반영 [내부]
- * - syncBotTasks_(sheet, detected): 자동 필드를 갱신하고 사라진 후보는 비활성화하며 수동 승인·수정 칸은 보존한다. 영향: BOT_TASKS 자동 필드·활성 상태 갱신.
+ * - syncBotTasks_(sheet, detected, keepPrefixes): 자동 필드를 갱신하고 사라진 후보는 비활성화하며 수동 승인·수정 칸은 보존한다.
+ *   이번에 읽지 못한 업무 종류(keepPrefixes)는 비활성화하지 않는다. 영향: BOT_TASKS 자동 필드·활성 상태 갱신.
  *
  * 05-15. 원본 시트 연결 [직접 실행]
  * - 원본 ID는 코드·문서에 적지 않는다. 스크립트 속성 ORIGINAL_HACV_SPREADSHEET_ID / ORIGINAL_PM_REVIEW_SPREADSHEET_ID /
@@ -63,7 +64,8 @@
  * - ⚠️ switchToOriginalSheets(): 미리보기와 같은 읽기 검사를 통과하면 업무 시트 속성(SOURCE_SPREADSHEET_ID 등)을 원본으로 바꾼다.
  *   바꾸기 전 값은 COPY_SHEETS_BACKUP에 남긴다. 봇은 원본을 읽기만 하고 쓰지 않는다. 영향: 스크립트 속성만.
  * - ⚠️ revertToCopySheets(): COPY_SHEETS_BACKUP으로 되돌린다. 영향: 스크립트 속성만.
- * - collectAllWorkTasks_(source, pmReviewSource, testSource, now): 세 업무 시트에서 업무 행을 모은다(읽기만). 봇 시트 반영은 호출자가 한다.
+ * - collectAllWorkTasks_(source, pmReviewSource, testSource, now, options): 세 업무 시트에서 업무 행을 모은다(읽기만). 봇 시트 반영은 호출자가 한다.
+ *   정기 갱신은 {tolerant:true}: 수집기 하나가 실패해도 나머지는 진행하고 failures로 알린다(그 업무는 직전 결과 유지).
  */
 
 /**
@@ -128,11 +130,13 @@ function refreshBotTasksForRound_(props) {
   let cached = null;
   try { cached = JSON.parse(props.getProperty('BOT_TASKS_REFRESHED') || 'null'); } catch (_) {}
   if (cached && cached.day === day && Date.now() - cached.at < 15 * 60000 && Array.isArray(cached.pmNames)) {
-    return {pmNames:cached.pmNames, emptyPmTabs:cached.emptyPmTabs || [], reused:true};
+    return {pmNames:cached.pmNames, emptyPmTabs:cached.emptyPmTabs || [], sourceFailures:cached.sourceFailures || [], reused:true};
   }
   const summary = refreshBotTasks();
+  // 사라진 담당 탭 경고는 같은 날 안에서는 유지한다(다음 회차 갱신에서 직전 값이 새 목록으로 바뀌어도 그날 요약에 남게).
+  const missing = [...new Set((summary.missingPmTabs || []).concat(cached && cached.day === day ? cached.missingPmTabs || [] : []))];
   try { props.setProperty('BOT_TASKS_REFRESHED', JSON.stringify({day, at:Date.now(), pmNames:summary.pmNames,
-    emptyPmTabs:summary.emptyPmTabs || []})); }
+    emptyPmTabs:summary.emptyPmTabs || [], missingPmTabs:missing, sourceFailures:summary.sourceFailures || []})); }
   catch (error) { console.log('업무 갱신 시각 저장 생략 | ' + error.message); }
   return summary;
 }
@@ -146,12 +150,26 @@ function refreshBotTasks_({ bot, sourceId }) {
   if ([sourceId, bot.getId()].includes(pmReviewId) || [sourceId, bot.getId()].includes(testId)) {
     throw new Error('추가 업무 원천 ID가 HA-CV 원천 또는 브리핑용 시트 ID와 같습니다.');
   }
-  const {collected, headsUp, detected, notPairPm, pmDashboards, upcoming, abuse, pmReviews, testReviews} = collectAllWorkTasks_(
-    SpreadsheetApp.openById(sourceId), SpreadsheetApp.openById(pmReviewId), SpreadsheetApp.openById(testId), new Date());
+  // 시트 하나를 못 열어도(권한·주소) 나머지 업무는 갱신한다. 못 연 시트의 업무는 직전 결과를 유지한다.
+  const open = (id, label) => {
+    try { return SpreadsheetApp.openById(id); }
+    catch (error) { console.warn(label + ' 시트 열기 실패: ' + error.message); return null; }
+  };
+  const {collected, headsUp, detected, notPairPm, pmDashboards, upcoming, abuse, pmReviews, testReviews, failures} = collectAllWorkTasks_(
+    open(sourceId, 'HA-CV'), open(pmReviewId, 'PM Review'), open(testId, '테스트지 관리'), new Date(), {tolerant:true});
   syncBotUsers_(users, Object.keys(collected.byPm)
     .concat(Object.keys(headsUp.byPm), pmDashboards.map(item => item.pm),
       abuse.concat(pmReviews, testReviews).map(row => row[1])));
-  syncBotTasks_(tasks, detected.concat(upcoming, abuse, pmReviews, testReviews));
+  syncBotTasks_(tasks, detected.concat(upcoming, abuse, pmReviews, testReviews), failures.flatMap(item => item.prefixes));
+  failures.forEach(item => console.warn('업무 시트 읽기 실패 → 직전 결과 유지: ' + item.label + ' | ' + item.message));
+  // 담당 탭을 못 읽으면 담당 PM 목록도 직전 값을 쓴다(모든 PM이 '이름 불일치'로 보이지 않게).
+  let previousPmNames = [];
+  try { previousPmNames = (JSON.parse(props.getProperty('BOT_TASKS_REFRESHED') || 'null') || {}).pmNames || []; } catch (_) {}
+  let pmNames = pmDashboards.map(item => item.pm);
+  if (failures.some(item => item.label === 'HA-CV 담당 탭')) pmNames = previousPmNames;
+  // 직전 갱신에 있던 담당 탭이 사라지면(탭 이름 변경·삭제) 그 PM의 언어쌍 업무가 조용히 빠진다. 관리자 요약에 알린다.
+  const missingPmTabs = previousPmNames.filter(pm => !pmNames.includes(pm));
+  if (missingPmTabs.length) console.warn('직전에 있던 담당 탭이 보이지 않음(탭 이름 변경·삭제 확인): ' + missingPmTabs.join(', '));
   if (notPairPm.length) {
     console.log('담당 탭 없음(언어쌍 PM 아님)으로 언어쌍 업무 제외: ' + notPairPm.length + '건 (' +
       [...new Set(notPairPm.map(row => row[1]))].join(', ') + ')');
@@ -176,7 +194,7 @@ function refreshBotTasks_({ bot, sourceId }) {
     '건, 테스트지 검토 미완료 ' + testReviews.length + '건');
   return { tasks: detected.length + upcoming.length + abuse.length + pmReviews.length + testReviews.length,
     unassigned: collected.unassigned.length + headsUp.unassigned.length,
-    pmNames: pmDashboards.map(item => item.pm), emptyPmTabs };
+    pmNames, emptyPmTabs, missingPmTabs, sourceFailures: failures.map(item => item.label + ': ' + item.message) };
 }
 
 function buildHaCvUpcomingTasks_(pm, records, day, sourceUrl, gid, now) {
@@ -333,7 +351,9 @@ function syncBotUsers_(sheet, owners) {
   });
 }
 
-function syncBotTasks_(sheet, detected) {
+// keepPrefixes: 이번에 읽지 못한 업무 종류(키 앞부분). 그 종류는 비활성화하지 않고 직전 결과를 그대로 둔다.
+function syncBotTasks_(sheet, detected, keepPrefixes) {
+  const keep = keepPrefixes || [];
   const lastRow = sheet.getLastRow();
   const existing = lastRow > 1
     ? sheet.getRange(2, 1, lastRow - 1, BOT_WORKBOOK.taskHeaders.length).getValues()
@@ -365,7 +385,7 @@ function syncBotTasks_(sheet, detected) {
          key.startsWith('HACV_OVERDUE|') ||
         key.startsWith('HACV_DUE_SOON|') || key.startsWith('HACV_ABUSE|') ||
         key.startsWith('PM_REVIEW|') || key.startsWith('TEST_REVIEW|')) &&
-        !currentKeys.has(key)) {
+        !currentKeys.has(key) && !keep.some(prefix => key.startsWith(prefix))) {
       block[rowNumber - 2][12] = false;
     }
   });
@@ -378,24 +398,43 @@ function syncBotTasks_(sheet, detected) {
 }
 
 // 세 업무 시트에서 업무 행을 모은다. 읽기만 하며 봇 시트 반영은 호출자(refreshBotTasks_)가 한다.
-function collectAllWorkTasks_(source, pmReviewSource, testSource, now) {
-  const collected = collectHaCvReviewCandidates_(source);
-  const headsUp = collectHaCvHeadsUpCandidates_(source);
-  const pmDashboards = collectHaCvPmDashboards_(source);
+// options.tolerant(정기 갱신): 원본 하나의 탭·머리글이 바뀌어도 회차 전체를 멈추지 않는다. 실패한 수집기는 빈 결과로 두고
+// failures에 {label, prefixes, message}를 남긴다(호출자가 그 업무 종류를 직전 결과로 유지). 전부 실패하면 멈춘다.
+// 미리보기·전환 검사는 tolerant 없이 불러 구조가 다르면 바로 오류로 알린다.
+function collectAllWorkTasks_(source, pmReviewSource, testSource, now, options) {
+  const tolerant = !!(options && options.tolerant);
+  const failures = [];
+  const attempt = (label, prefixes, fallback, run) => {
+    if (!tolerant) return run();
+    try { return run(); }
+    catch (error) { failures.push({label, prefixes, message:String(error && error.message || error).slice(0, 200)}); return fallback; }
+  };
+  const need = (sheet, label) => {
+    if (!sheet) throw new Error(label + ' 시트를 열지 못했습니다(보기 권한·주소 확인).');
+    return sheet;
+  };
+  const day = Utilities.formatDate(now, BRIEFING.timezone, 'yyyy-MM-dd');
+  const empty = () => ({byPm:{}, unassigned:[]});
+  const collected = attempt('HA-CV HUB', ['HACV_REVIEW|'], empty(), () => collectHaCvReviewCandidates_(need(source, 'HA-CV')));
+  const headsUp = attempt('HA-CV 헤즈업 결과 집계', ['HACV_HEADSUP|'], empty(), () => collectHaCvHeadsUpCandidates_(need(source, 'HA-CV')));
+  // 담당 탭을 못 읽으면 언어쌍 PM을 가릴 수 없으므로 HA-CV 업무 전체를 직전 결과로 둔다.
+  const hacvPrefixes = ['HACV_REVIEW|', 'HACV_HEADSUP|', 'HACV_OVERDUE|', 'HACV_DUE_SOON|', 'HACV_ABUSE|'];
+  const dashboardsRead = attempt('HA-CV 담당 탭', hacvPrefixes, null, () => collectHaCvPmDashboards_(need(source, 'HA-CV')));
+  const pmDashboards = dashboardsRead || [];
   // HA-CV 시트에 담당 탭이 없는 사람은 언어쌍 PM이 아니다. 예비 작업자 검토·헤즈업 같은 언어쌍 업무는 빼고,
   // PM Review·테스트지 업무만 받는다. (종료 임박·어뷰저는 담당 탭에서만 나오므로 원래 해당 없음)
   const pairPms = new Set(pmDashboards.map(item => item.pm));
-  const pairTasks = buildHaCvBotTasks_(collected.byPm, now).concat(buildHaCvHeadsUpTasks_(headsUp.byPm, now));
+  const pairTasks = dashboardsRead ? buildHaCvBotTasks_(collected.byPm, now).concat(buildHaCvHeadsUpTasks_(headsUp.byPm, now)) : [];
   const detected = pairTasks.filter(row => pairPms.has(String(row[1] || '').trim()));
   const notPairPm = pairTasks.filter(row => !pairPms.has(String(row[1] || '').trim()));
-  const day = Utilities.formatDate(now, BRIEFING.timezone, 'yyyy-MM-dd');
   const upcoming = pmDashboards.flatMap(({ pm, records, gid }) =>
     buildHaCvUpcomingTasks_(pm, records, day, source.getUrl(), gid, now));
   const abuse = pmDashboards.flatMap(({ pm, records, gid }) =>
     buildHaCvAbuseTasks_(pm, records, day, source.getUrl(), gid, now));
-  const pmReviews = collectPmReviewTasks_(pmReviewSource, day, now);
-  const testReviews = collectTestReviewTasks_(testSource, now);
-  return {collected, headsUp, detected, notPairPm, pmDashboards, upcoming, abuse, pmReviews, testReviews};
+  const pmReviews = attempt('PM Review', ['PM_REVIEW|'], [], () => collectPmReviewTasks_(need(pmReviewSource, 'PM Review'), day, now));
+  const testReviews = attempt('테스트지 관리', ['TEST_REVIEW|'], [], () => collectTestReviewTasks_(need(testSource, '테스트지 관리'), now));
+  if (failures.length === 5) throw new Error('업무 시트를 하나도 읽지 못했습니다: ' + failures.map(item => item.label + ' — ' + item.message).join(' / '));
+  return {collected, headsUp, detected, notPairPm, pmDashboards, upcoming, abuse, pmReviews, testReviews, failures};
 }
 
 const ORIGINAL_SHEETS = Object.freeze([

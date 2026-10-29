@@ -119,11 +119,9 @@ const testRows = [testRow('2026-10-10', '생성 완료'),
   testRow('2026-10-07', '업로드 완료'),
   testRow('2026-10-11', '생성 중'),
   testRow('2026-10-12', '생성 완료', '')];
-const testSheet = {
-  getLastRow: () => testRows.length + 1,
-  getSheetId: () => 800,
-  getRange: row => ({ getDisplayValues: () => row === 1 ? [testHeader] : testRows }),
-};
+const testGridSheet = (grid, id) => ({getLastRow: () => grid.length, getLastColumn: () => grid[0].length, getSheetId: () => id,
+  getRange: (r, c, h, w) => ({getDisplayValues: () => grid.slice(r - 1, r - 1 + h).map(x => x.slice(c - 1, c - 1 + w))})});
+const testSheet = testGridSheet([testHeader].concat(testRows), 800);
 const testSource = { getSheetByName: name => name === 'HT 테스트지 제작 관리(ing)' ? testSheet : null,
   getUrl: () => 'https://docs.google.com/spreadsheets/d/tests/edit' };
 const collectTest = vm.runInContext('collectTestReviewTasks_', context);
@@ -147,6 +145,16 @@ assert.throws(() => collectTest({getSheetByName:() => null}, now), /연결 파�
 assert.throws(() => collectTest({getSheetByName:() => testSheet}, now), /대상 탭이 2개/);
 assert.throws(() => collectTest({getSheetByName:name => name === 'HT 테스트지 제작 관리' ?
   {...testSheet, getRange:() => ({getDisplayValues:() => [Array(8).fill('')]})} : null}, now), /헤더가 예상과 다릅니다/);
+// 원본에 열이 하나 끼고 제목 줄이 생겨도(머리글 2행) 이름으로 찾아 같은 업무를 읽는다. 링크·안내 열 글자도 따라간다.
+{
+  const shiftTest = row => [row[0], '메모'].concat(row.slice(1));
+  const shifted = testGridSheet([['HT 테스트지'].concat(Array(8).fill(''))].concat([testHeader].concat(testRows).map(shiftTest)), 801);
+  const moved = collectTest({getSheetByName: name => name === 'HT 테스트지 제작 관리' ? shifted : null, getUrl: testSource.getUrl}, now);
+  const noRow = key => key.replace(/\|row\d+$/, '');
+  assert.deepEqual(moved.map(r => [noRow(r[0]), r[1], r[7]]), testTasks.map(r => [noRow(r[0]), r[1], r[7]]), 'inserted column and title row do not change tasks');
+  assert.match(moved[0][10], /range=I3$/);
+  assert.match(moved[0][6], /G열을 검토 완료로 변경/);
+}
 // 새 양식 담당 탭(10/27~): 줄 전체에서 "프로젝트 · 목표 종료일 · 수량 · 최대 N배치", 다음 줄에 언어쌍 블록 머리글.
 // 지난 목표 종료일은 종료, 오늘~7일 안은 종료 임박, 오늘·어제 종료는 어뷰저 관리.
 {

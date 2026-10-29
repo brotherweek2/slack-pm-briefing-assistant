@@ -411,22 +411,32 @@ function collectTestReviewTasks_(source, now) {
     '테스트지 관리 대상 탭이 2개입니다. 활성 탭을 확인하세요. 자동 선택·발송 없음.' :
     '테스트 관리 연결 파일에 HT 테스트지 제작 관리 또는 HT 테스트지 제작 관리(ing) 탭이 없습니다. 연결 파일과 탭 이름을 확인하세요.');
   const {name:tabName, sheet} = candidates[0];
-  const header = sheet.getRange(1, 1, 1, 8).getDisplayValues()[0];
-  if (header[0].trim() !== 'Language Pair' || header[4].trim() !== '검토 완료일' ||
-      header[5].trim() !== 'Status' || header[7].trim() !== '검토 PM') {
-    throw new Error('테스트 관리 탭의 언어쌍·검토 완료일·상태·검토 PM 헤더가 예상과 다릅니다. 1행 A·E·F·H열 기대: ' +
-      'Language Pair / 검토 완료일 / Status / 검토 PM · 실제: ' + [0, 4, 5, 7].map(i => '"' + header[i] + '"').join(' / '));
+  // 머리글은 1~3행 중 한 줄에서 이름으로 찾는다(지금은 1행 A·E·F·H). 열이 끼거나 순서가 바뀌어도 읽는다.
+  const width = Math.max(1, Math.min(sheet.getLastColumn(), 30));
+  const names = {pair:'Language Pair', due:'검토 완료일', status:'Status', pm:'검토 PM'};
+  const top = sheet.getRange(1, 1, Math.min(3, Math.max(1, sheet.getLastRow())), width).getDisplayValues();
+  let headerIndex = -1, col = null;
+  top.some((row, r) => {
+    const cells = row.map(value => String(value || '').trim()), found = {};
+    if (!Object.keys(names).every(key => (found[key] = cells.indexOf(names[key])) >= 0)) return false;
+    headerIndex = r; col = found; return true;
+  });
+  if (!col) {
+    throw new Error('테스트 관리 탭의 언어쌍·검토 완료일·상태·검토 PM 헤더가 예상과 다릅니다. 1~3행 중 한 줄에 ' +
+      'Language Pair / 검토 완료일 / Status / 검토 PM이 있어야 합니다 · 1행: ' + (top[0] || []).slice(0, 8).map(v => '"' + v + '"').join(' / '));
   }
-  const height = Math.max(0, sheet.getLastRow() - 1);
+  const firstRow = headerIndex + 2;
+  const height = Math.max(0, sheet.getLastRow() - firstRow + 1);
   if (!height) return [];
-  const rows = sheet.getRange(2, 1, height, 8).getDisplayValues();
+  const rows = readDisplayRowsInChunks_(sheet, firstRow, height, width);
+  const statusLetter = columnLetters_(col.status + 1), pmLetter = columnLetters_(col.pm + 1);
   return uniqueTaskKeys_(rows.flatMap((row, index) => {
-    const pair = String(row[0] || '').trim();
-    const due = normalizeSheetDate_(row[4]);
-    const status = String(row[5] || '').trim();
-    const pm = normalizeReviewPm_(row[7]);
+    const pair = String(row[col.pair] || '').trim();
+    const due = normalizeSheetDate_(row[col.due]);
+    const status = String(row[col.status] || '').trim();
+    const pm = normalizeReviewPm_(row[col.pm]);
     if (!pm || !pair || !['생성 완료', '검토 중'].includes(status)) return [];
-    const rowNumber = index + 2;
+    const rowNumber = index + firstRow;
     return [[
       'TEST_REVIEW|' + pair + '|' + pm, // 행 번호 대신 언어쌍·담당자(같은 조합이 또 있으면 행 번호를 붙임)
       pm,
@@ -434,11 +444,11 @@ function collectTestReviewTasks_(source, now) {
       pair,
       '테스트지 검토',
       '테스트지 ' + status + ', 검토 필요',
-      '테스트지 검토 후 F열을 검토 완료로 변경',
-      due, // E열은 완료 기록이 아니라 검토 완료 기한이다.
+      '테스트지 검토 후 ' + statusLetter + '열을 검토 완료로 변경',
+      due, // '검토 완료일'은 완료 기록이 아니라 검토 완료 기한이다.
       '',
       tabName,
-      source.getUrl() + '#gid=' + sheet.getSheetId() + '&range=H' + rowNumber,
+      source.getUrl() + '#gid=' + sheet.getSheetId() + '&range=' + pmLetter + rowNumber,
       String(rowNumber),
       true,
       now,

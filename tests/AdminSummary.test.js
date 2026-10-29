@@ -166,5 +166,11 @@ console.log('Admin round summary, hints, once-per-slot, cleanup and start-failur
   const ok = fixture({BOT_TASKS_REFRESHED: JSON.stringify({day: '2026-10-23', at: 0, pmNames: ['PM A'], emptyPmTabs: []})});
   ok.ctx.selfCalendarRegistry_ = () => [];
   assert.doesNotMatch(ok.ctx.buildAdminRoundSummary_(ok.props, '11:00', {state: 'complete', total: 1, pendingIds: [], failedIds: []}, new Date(at('10:40'))).text, /담당 탭 형식/);
-  console.log('Empty PM tabs are flagged in the round summary');
+  const failedSource = fixture({BOT_TASKS_REFRESHED: JSON.stringify({day: '2026-10-23', at: 0, pmNames: ['PM A'], emptyPmTabs: [],
+    sourceFailures: ['테스트지 관리: 탭이 없습니다'], missingPmTabs: ['PM C']})});
+  failedSource.ctx.selfCalendarRegistry_ = () => [];
+  const st = failedSource.ctx.buildAdminRoundSummary_(failedSource.props, '11:00', {state: 'complete', total: 1, pendingIds: [], failedIds: []}, new Date(at('10:40'))).text;
+  assert.match(st, /⚠️ 업무 시트 읽기 실패\(직전 결과 유지\): 테스트지 관리: 탭이 없습니다/);
+  assert.match(st, /⚠️ 담당 탭이 사라짐: PM C/);
+  console.log('Empty PM tabs and unreadable work sheets are flagged in the round summary');
 }
