@@ -1,23 +1,31 @@
 /**
- * 19. 개인 캘린더 연결 수신 — 기본 비활성, 배포·속성 설정 후 관리자 전환 필요.
- * - doPost(e): [웹 앱 진입점 — 직접 실행하지 않음] 별도 연결 앱의 서명 요청 수신. 등록 이메일과 BOT_USERS를 대조한다.
- *   봇 전용 BOT_CALENDAR_PERSONAL만 갱신. 원천 시트·Slack·트리거 변경 없음.
- * - previewSelfCalendarSetup(): 설정 유무·연결 수만 조회. 개인정보·비밀키 출력 없음.
- * - previewConnectedCalendarStatus(): PM별 실제 자동 갱신·원천 상태·당일 10:30/14:00/17:00 성공 기록 조회.
- *   기능 테스트와 무인 갱신·발송을 구분한다. 조회만, 설정/시트/트리거/DM 변경 없음.
- * - selfCalendarSection_: 본인 수신자와 일치하는 최신 회의만 DM 문안으로 변환.
- * - selfCalendarFilterRoutes_: 발송 TRUE 명단 중 본인 연결 완료 수신자만 통과.
- * - selfCalendarAuthenticate_: HMAC·시각·요청 형식 검사. 연결 앱 서버만 비밀키 보유.
- * - selfCalendarApply_: 잠금 안에서 요청 순서·연결 ID 검사 후 제한된 캐시 교체.
- * - selfCalendarRegistry_: BOT_USERS 등록 명단. 이메일/이름/Slack ID 중복·형식 오류 줄은 그 PM만 빼고 skipped에 남긴다.
- *   등록 명단: BOT_USERS E열 제목이 calendar_connect면 체크된 행, 아니면 예전 SELF_CALENDAR_ALLOWED_EMAILS.
- * - calendarConnectLink_(props,label): 실제 배포 URL일 때만 연결 앱 Slack 링크를 만든다.
- * - selfCalendarValidateEvents_: 수집 날짜·행 수·필드·시간·크기 검사.
- * - selfCalendarExtras_: 4개 캘린더 원천 조회 상태 검증. Tasks 수신 거절.
- * - selfCalendarFormatSources_: 본인 일정·휴일만 표시. 이전 캐시의 공통 검수/납품·타인 휴가 제외.
- * - selfCalendarStore_: 허용된 봇 전용 저장소만 개방. 읽기 모드는 탭 생성 없음.
- * - selfCalendarSignature_/selfCalendarEqual_/selfCalendarJson_: 서명·비교·JSON 내부 함수.
- * - 이 파일만 업로드해도 활성화되지 않는다. 신규 웹 앱 배포·서명키·명단 설정 필요.
+ * 19. 개인캘린더연결 — 연결 앱이 보낸 회의 받기(서명 확인), 연결 상태 점검
+ *
+ * 알아둘 것
+ * - 연결 앱 요청은 HMAC 서명·2분 시간 창·같은 요청 재사용 차단으로 검증한다.
+ * - 봇 전용 BOT_CALENDAR_PERSONAL만 갱신한다. 원천 시트·Slack·트리거는 바꾸지 않는다.
+ *
+ * 직접 실행 (🔍 조회만 · ⚠️ 보내거나 바꿈 · ⏰ 자동 호출)
+ * - ⏰ doPost(e): Slack 버튼·연결 앱 요청을 받는 웹 앱 입구(직접 실행하지 않음)
+ * - 🔍 previewSelfCalendarSetup(): 캘린더 연결 설정 유무와 연결 인원만 조회한다
+ * - 🔍 previewConnectedCalendarStatus(): PM별 실제 자동 갱신·원천 상태·당일 10:30/14:00/17:00 성공 기록 조회
+ *
+ * 내부 함수 (직접 실행하지 않음)
+ * - selfCalendarAuthenticate_(e, props, now): HMAC·시각·요청 형식 검사
+ * - selfCalendarUsesConnectColumn_(sheet): 등록 명단의 기준: BOT_USERS E열 calendar_connect 체크박스
+ * - selfCalendarRosterConfigured_(props): 캘린더 연결 명단(체크박스 열 또는 이메일 목록)이 설정됐는지 확인
+ * - selfCalendarRegistry_(props): BOT_USERS에서 캘린더 연결 대상(이름·Slack ID·이메일)을 읽는다
+ * - selfCalendarApply_(r, props): 잠금 안에서 요청 순서·연결 ID 검사 후 제한된 캐시 교체
+ * - selfCalendarValidateEvents_(snapshot, sentAt): 수집 날짜·행 수·필드·시간·크기 검사
+ * - selfCalendarExtras_(snapshot): 4개 캘린더 원천 조회 상태 검증
+ * - selfCalendarStore_(props, create): 허용된 봇 전용 저장소만 개방
+ * - calendarConnectLink_(props,label): 실제 배포 URL일 때만 연결 앱 Slack 링크를 만든다
+ * - selfCalendarSection_(route, props, slot, now, viewFrom): 본인 수신자와 일치하는 최신 회의만 DM 문안으로 변환
+ * - selfCalendarFormatSources_(state,snapshot,includeTomorrow): 회의 영역에 본인 일정·휴일만 표시하고 조회 실패 캘린더를 알린다
+ * - selfCalendarFilterRoutes_(routes, props): 발송 TRUE 명단 중 본인 연결 완료 수신자만 통과
+ * - selfCalendarSignature_(payload,key): 연결 앱 요청의 서명(HMAC)을 만든다
+ * - selfCalendarEqual_(a,b): 서명 두 개를 안전하게(시간 차 없이) 비교한다
+ * - selfCalendarJson_(data): 웹 앱 응답을 JSON으로 만든다
  */
 function doPost(e) {
   if (e && e.parameter && typeof e.parameter.payload === 'string') return handleSlackInteraction_(e);

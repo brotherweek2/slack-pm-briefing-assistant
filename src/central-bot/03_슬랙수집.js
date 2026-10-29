@@ -1,87 +1,39 @@
 /**
- * 03. 슬랙수집
- * - 역할: Slack 채널·스레드 읽기, 이어서 수집, 완료본 저장
- * - 읽는 법: [직접 실행]은 편집기에서 선택, [내부]는 상위 함수가 필요한 인수를 전달해 자동 호출.
- * - 이름 끝 _ 는 내부 함수. 함수 식별자는 유지하므로 기존 트리거·호출 연결은 그대로 사용.
- * - 아래 번호는 안내 제목이며 실제 함수 이름 앞에 숫자를 입력하지 않는다.
+ * 03. 슬랙수집 — #pm_team_channel 채널·스레드 미리 수집, 완료본 저장
  *
- * 03-01. 수집 한도 확인 [내부]
- * - slackBudgetSpent_(budget): 남은 실행 시간과 API 호출 예산을 확인한다.
+ * 알아둘 것
+ * - #pm_team_channel 한 채널만 읽는다(채널 이름 고정). 최근 7일 + 등록 스레드.
+ * - 개인 멘션·PM 그룹 멘션만 후보가 된다. @here·@channel·멘션 없는 글은 제외.
+ * - 한 번에 4.5분·호출 300회까지, 요청 제한(429)이면 기다렸다 이어 읽는다. DM 없음.
  *
- * 03-02. 중복 수집 점유 [내부]
- * - acquireBbpmLease_(): 짧은 스크립트 잠금으로 수집 점유 시간을 속성에 기록한다. 영향: 수집 점유 속성 변경.
+ * 직접 실행 (🔍 조회만 · ⚠️ 보내거나 바꿈 · ⏰ 자동 호출)
+ * - ⏰ collectBbpmSnapshot(e): #pm_team_channel을 미리 읽어 Slack 완료본을 만든다(수동 실행하면 지금 바로 수집)
  *
- * 03-03. 수집 점유 해제 [내부]
- * - releaseBbpmLease_(): 수집 점유 속성을 해제한다. 영향: 수집 점유 속성 변경.
- *
- * 03-04. 중복 실행 오류 [내부]
- * - bbpmBusyError_(): 다른 수집이 진행 중임을 구분하는 오류를 만든다.
- *
- * 03-05. 읽기 설정 검증 [내부]
- * - readSlackMentionConfig_(props): 봇 인증·그룹·기간·스레드·자동 발견 채널 설정을 확인한다.
- *
- * 03-06. 스레드 링크 해석 [내부]
- * - parseSlackMentionThreadUrl_(url): Slack 링크에서 워크스페이스·채널·부모 스레드 정보를 추출한다.
- *
- * 03-07. 멘션 수신자 선택 [내부]
- * - selectSlackMentionRecipients_(rows): BOT_USERS의 이름·Slack ID 중복과 형식을 확인한다.
- *
- * 03-08. 수집 점유 흐름 [내부]
- * - collectSlackMentionMessages_(config, now): 자동 발견 수집의 중복 실행을 막고 종료 시 점유를 해제한다.
- *
- * 03-09. 수집 배치 실행 [내부]
- * - collectSlackMentionRecordsBatch_(config, now): Slack 봇·그룹을 확인하고 채널·부모글·답글을 호출 예산 안에서 읽는다.
- *
- * 03-10. 스레드 발견 진입 [내부]
- * - discoverBbpmThreads_(config, host, oldest, newest, budget): 채널 이력 발견 작업을 수집 점유로 보호한다.
- *
- * 03-11. 채널 이력 이어 읽기 [내부]
- * - discoverBbpmThreadsBatch_(config, host, oldest, newest, budget): 채널 페이지를 읽어 최근 답글이 있는 과거 부모글까지 찾아 진행 커서를 저장한다. 영향: Slack 읽기·진행/캐시 변경.
- *
- * 03-12. 발견 캐시 준비 [내부]
- * - openBbpmDiscoveryCache_(config, host, oldest, newest): 유효한 채널 이력 진행 상태와 봇 전용 캐시 탭을 재사용하거나 준비한다. 영향: 전용 캐시 탭/진행 속성 준비 가능.
- *
- * 03-13. 발견 후보 저장 [내부]
- * - appendBbpmDiscoveryCache_(cache, messages): 채널 메시지·스레드 후보를 전용 캐시 탭에 추가한다. 영향: 전용 캐시 탭 추가.
- *
- * 03-14. 발견 후보 읽기 [내부]
- * - readBbpmDiscoveryCache_(cache, config, host): 저장된 후보와 고정된 조회 시각을 읽어 수집 대상을 복원한다.
- *
- * 03-15. 답글 이어 읽기 [내부]
- * - collectBbpmRepliesBatch_(cache, threads, config, budget): 부모글·답글 페이지를 읽고 스레드별 커서와 완료 상태를 전용 캐시에 저장한다. 영향: Slack 읽기·전용 캐시/진행 변경.
- *
- * 03-16. Slack 읽기 API [내부]
- * - slackMentionReadApi_(method, params, token, budget): 호출 예산·응답·읽기 제한을 검사하며 Slack Web API 읽기 요청을 보낸다.
- *
- * 03-17. 메시지 텍스트 정리 [내부]
- * - slackMentionText_(text): Slack의 사용자·그룹 표기 등을 읽기 쉬운 텍스트로 바꾼다.
- *
- * 03-18. 개인·그룹 멘션 분류 [내부]
- * - classifySlackMentionMessages_(messages, recipients, members, groupId, oldest, newest, ownBotId): 조회 기간·실제 그룹 멤버·수신자 ID를 기준으로 대상 메시지를 나눈다.
- *
- * 03-19. Slack 미리 수집 [직접 실행]
- * - 함수: collectBbpmSnapshot(e)
- * - 기능: 자동 호출은 수집 시간대에만 실행하고 수동 실행은 시간대 밖에서도 이어 읽는다.
- * - 사용: 트리거가 자동 호출. 수동 실행도 가능하며 진행 중이면 이어 실행.
- * - 영향: Slack 읽기·전용 수집/완료본 탭·진행/상태 속성 변경. DM 없음.
- *
- * 03-20. 수집 시간대 판별 [내부]
- * - isBbpmCollectWindow_(now): 한국 시간의 오전·오후 수집 허용 범위를 확인한다.
- *
- * 03-21. 완료본 수집 단계 [내부]
- * - runBbpmCollectStep_(props, now): 한 배치 수집 후 진행 상황 또는 완료본을 저장하고 마지막 오류 상태를 관리한다. 영향: Slack 읽기·완료본/진행/오류 속성 변경.
- *
- * 03-22. Slack 완료본 저장 [내부]
- * - writeBbpmSnapshot_(bot, props, scan, groupId): 멘션이 있는 메시지만 두 전용 탭에 번갈아 저장하고 활성 완료본 속성을 바꾼다. 영향: 봇 전용 완료본 탭·활성 속성 변경.
- *
- * 03-23. Slack 완료본 읽기 [내부]
- * - readBbpmSnapshot_(props, bot): 현재 활성 완료본의 메타정보와 메시지를 읽는다.
- *
- * 03-24. 발송용 최신성 확인 [내부]
- * - loadFreshBbpmSnapshot_(props, bot, now): 완료본 존재와 허용 경과 시간을 검사하고 오래된 자료를 차단한다.
- *
- * 03-25. 저장 멘션 재분류 [내부]
- * - classifySlackSnapshot_(snapshot, recipients): 완료본의 그룹 멤버·기간을 사용해 현재 수신자별로 분류한다.
+ * 내부 함수 (직접 실행하지 않음)
+ * - slackBudgetSpent_(budget): 남은 실행 시간과 API 호출 예산을 확인한다
+ * - acquireBbpmLease_(): 짧은 스크립트 잠금으로 수집 점유 시간을 속성에 기록한다
+ * - releaseBbpmLease_(): Slack 수집 점유 표시를 푼다
+ * - bbpmBusyError_(): 다른 수집이 진행 중임을 구분하는 오류를 만든다
+ * - readSlackMentionConfig_(props): 봇 인증·그룹·기간·스레드·자동 발견 채널 설정을 확인한다
+ * - parseSlackMentionThreadUrl_(url): Slack 링크에서 워크스페이스·채널·부모 스레드 정보를 추출한다
+ * - selectSlackMentionRecipients_(rows): BOT_USERS의 이름·Slack ID 중복과 형식을 확인한다
+ * - collectSlackMentionMessages_(config, now): 자동 발견 수집의 중복 실행을 막고 종료 시 점유를 해제한다
+ * - collectSlackMentionRecordsBatch_(config, now): Slack 봇·그룹을 확인하고 채널·부모글·답글을 호출 예산 안에서 읽는다
+ * - discoverBbpmThreads_(config, host, oldest, newest, budget): 채널 이력 발견 작업을 수집 점유로 보호한다
+ * - discoverBbpmThreadsBatch_(config, host, oldest, newest, budget): 채널 페이지를 읽어 최근 답글이 있는 과거 부모글까지 찾아 진행 커서를 저장한다
+ * - openBbpmDiscoveryCache_(config, host, oldest, newest): 유효한 채널 이력 진행 상태와 봇 전용 캐시 탭을 재사용하거나 준비한다
+ * - appendBbpmDiscoveryCache_(cache, messages): 채널 메시지·스레드 후보를 전용 캐시 탭에 추가한다
+ * - readBbpmDiscoveryCache_(cache, config, host): 저장된 후보와 고정된 조회 시각을 읽어 수집 대상을 복원한다
+ * - collectBbpmRepliesBatch_(cache, threads, config, budget): 부모글·답글 페이지를 읽고 스레드별 커서와 완료 상태를 전용 캐시에 저장한다
+ * - slackMentionReadApi_(method, params, token, budget): 호출 예산·응답·읽기 제한을 검사하며 Slack Web API 읽기 요청을 보낸다
+ * - slackMentionText_(text): Slack의 사용자·그룹 표기 등을 읽기 쉬운 텍스트로 바꾼다
+ * - classifySlackMentionMessages_(messages, recipients, members, groupId, oldest, newest, ownBotId): 조회 기간·실제 그룹 멤버·수신자 ID를 기준으로 대상 메시지를 나눈다
+ * - isBbpmCollectWindow_(now): 한국 시간의 오전·오후 수집 허용 범위를 확인한다
+ * - runBbpmCollectStep_(props, now): 한 배치 수집 후 진행 상황 또는 완료본을 저장하고 마지막 오류 상태를 관리한다
+ * - writeBbpmSnapshot_(bot, props, scan, groupId): 멘션이 있는 메시지만 두 전용 탭에 번갈아 저장하고 활성 완료본 속성을 바꾼다
+ * - readBbpmSnapshot_(props, bot): 현재 활성 완료본의 메타정보와 메시지를 읽는다
+ * - loadFreshBbpmSnapshot_(props, bot, now): 완료본 존재와 허용 경과 시간을 검사하고 오래된 자료를 차단한다
+ * - classifySlackSnapshot_(snapshot, recipients): 완료본의 그룹 멤버·기간을 사용해 현재 수신자별로 분류한다
  */
 
 /**

@@ -1,10 +1,14 @@
 /**
- * 30. 피드백 — DM 맨 아래 "👍 도움됐어요 / 👎 아쉬워요 / ✍️ 자세히 남기기" 버튼.
- * - 👍/👎: 누르면 봇 시트 BOT_FEEDBACK 탭에 한 줄(받은 시각·Slack ID·이름·날짜·회차·평가)이 쌓이고, 누른 사람에게만 감사 답장.
- * - ✍️: 구글 폼으로 연결(FEEDBACK_FORM_URL, docs.google.com/forms 또는 forms.gle 주소만). 응답은 폼에서 봇 시트로 연결해 둔다.
- * - 버튼은 Slack 버튼 응답이 설정됐을 때(SLACK_VERIFICATION_TOKEN 있음)만 붙고, ENABLE_FEEDBACK=false면 끈다.
- * - appendFeedbackButtons_(blocks, props, day, slot): 블록 맨 끝에 질문 한 줄과 버튼을 붙인다(블록 상한 50 안에서만).
- * - handleFeedbackAction_(payload, action, props): [웹 앱] 25번 handleSlackInteraction_이 검증 후 넘긴다.
+ * 30. 피드백 — 👍·👎·✍️ 피드백 버튼과 기록
+ *
+ * 알아둘 것
+ * - 👍/👎는 BOT_FEEDBACK 탭에 쌓이고, ✍️는 구글 폼(FEEDBACK_FORM_URL)으로 연결한다.
+ * - SLACK_VERIFICATION_TOKEN이 있을 때만 버튼이 붙는다. ENABLE_FEEDBACK=false면 끈다.
+ *
+ * 내부 함수 (직접 실행하지 않음)
+ * - feedbackEnabled_(props): 피드백 버튼을 붙일 조건(검증 토큰·설정)을 확인한다
+ * - appendFeedbackButtons_(blocks, props, day, slot): 블록 맨 끝에 질문 한 줄과 버튼을 붙인다(블록 상한 50 안에서만)
+ * - handleFeedbackAction_(payload, action, props): [웹 앱] 25번 handleSlackInteraction_이 검증 후 넘긴다
  */
 // formUrl: 기본 피드백 폼(회사 계정만 응답). 스크립트 속성 FEEDBACK_FORM_URL이 올바른 주소면 그것을 우선한다.
 const FEEDBACK = Object.freeze({tab:'BOT_FEEDBACK', headers:['received_at', 'slack_user_id', 'user_name', 'day', 'slot', 'rating'],

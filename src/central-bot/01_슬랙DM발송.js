@@ -1,56 +1,27 @@
 /**
- * 01. 슬랙DM발송
- * - 역할: 개인 DM 발송(10:30 오전 · 14:00 오후 · 17:00 마무리)과 본인 시험·미리보기
- * - 읽는 법: [직접 실행]은 편집기에서 선택, [내부]는 상위 함수가 필요한 인수를 전달해 자동 호출.
- * - 이름 끝 _ 는 내부 함수. 함수 식별자는 유지하므로 기존 트리거·호출 연결은 그대로 사용.
- * - 아래 번호는 안내 제목이며 실제 함수 이름 앞에 숫자를 입력하지 않는다.
- * - 본인 시험 DM [직접 실행] — 실행 계정 이메일에 해당하는 본인 1명에게만, 시험 종류마다 하루 1회. 다른 PM 설정은 그대로.
- * - sendMyMorningBriefingTest(): 본인에게 10:30 오전 문안 시험 DM.
- * - sendMyAfternoonBriefingTest(): 본인에게 14:00 오후 업데이트 시험 DM.
- * - sendMyCurrentBriefingTest(): 본인에게 지금 시각 문안 시험 DM(17:00 전 오전형, 17:00 이후 마무리형).
+ * 01. 슬랙DM발송 — 개인 DM 만들기·보내기, 본인 시험·미리보기
  *
- * 01-01. 수신자 점검 [직접 실행]
- * - 함수: previewPmSlackRouting()
- * - 기능: 업무를 갱신하고 PM별 Slack 연결·발송 설정을 확인한다.
- * - 사용: 편집기에서 선택→실행. 수신자 설정을 확인할 때 사용.
- * - 영향: BOT_TASKS·필요시 BOT_USERS 갱신. DM 없음.
+ * 알아둘 것
+ * - 본인 시험 DM은 실행 계정 본인 1명에게만, 시험 종류마다 하루 1회.
+ * - 한 PM의 명단·문안 오류는 그 PM만 실패로 남기고 나머지는 보낸다.
+ * - 담당 탭이 없는 수신자도 정상 대상이다(본인 배정 업무만 표시).
+ * - 원본을 못 읽어 직전 결과로 둔 업무 종류는 발송 전 "오늘 갱신" 검사에서 뺀다.
  *
- * 01-02. 봇 인증 점검 [직접 실행]
- * - 함수: checkSlackBotToken()
- * - 기능: Slack auth.test로 봇 인증 유효성만 확인한다.
- * - 사용: 인증 설정 후 편집기에서 실행.
- * - 영향: Slack 인증 API만 호출. DM 없음.
+ * 직접 실행 (🔍 조회만 · ⚠️ 보내거나 바꿈 · ⏰ 자동 호출)
+ * - ⚠️ previewPmSlackRouting(): 업무를 갱신하고 PM별 Slack 연결·발송 설정을 확인한다
+ * - 🔍 checkSlackBotToken(): Slack auth.test로 봇 인증 유효성만 확인한다
+ * - ⚠️ sendMyMorningBriefingTest(): 본인에게 10:30 오전 문안 시험 DM
+ * - ⚠️ sendMyAfternoonBriefingTest(): 본인에게 14:00 오후 업데이트 시험 DM
+ * - ⚠️ sendMyCurrentBriefingTest(): 본인에게 지금 시각 문안 시험 DM(17:00 전 오전형, 17:00 이후 마무리형)
+ * - 🔍 previewMyMorningBriefing(): 저장된 오늘 업무·최신 Slack 완료본·현재 회의로 10:30 오전 문안을 출력한다
+ * - 🔍 previewMyEveningBriefing(): 현재 자료로 17:00 마무리 문안과 내일 회의·기한을 출력한다
  *
- * 01-03. 공통 발송 처리 [내부]
- * - sendPmBriefings_(updatedTest, includeSlack, scheduledSlot, _unused, deliveryOptions): 업무 갱신·수신자 검증·중복 차단 후 개인 DM을 보내고 성공 이력을 저장한다.
- *   한 PM의 명단·문안 오류는 그 PM만 실패로 남기고 나머지는 보낸다. 영향: 실제 DM·봇 시트/발송/Slack·점심·문구 이력 변경.
- * - deliveryOptions는 20번 이어 보내기가 지정한 수신자만 처리하고 완료/실패/대기 결과를 반환한다.
- *
- * 01-04. Slack 오류 문안 [내부]
- * - describeSlackFailure_(error, props): 완료본 없음·최신성 초과·권한·인증·호출 제한을 짧은 안내로 바꾼다.
- *
- * 01-05. PM 수신 경로 [내부]
- * - buildPmSlackRoutes_(userRows, owners, issues): BOT_USERS 발송 대상. 중복·잘못된 Slack ID는 그 PM만 제외,
- *   담당 탭이 없는 수신자도 정상 대상이다. 본인 배정 업무만 표시하며, 탭 부재는 오류로 알리지 않는다.
- *
- * 01-06. 오전 DM 미리보기 [직접 실행]
- * - 함수: previewMyMorningBriefing()
- * - 기능: 저장된 오늘 업무·최신 Slack 완료본·현재 회의로 10:30 오전 문안을 출력한다.
- * - 사용: 오늘 BOT_TASKS와 최신 Slack 완료본 준비 후 실행. 14:00 문안은 29번 previewMyAfternoonBriefing.
- * - 영향: 현재 캘린더 읽기만. DM·시트/속성/발송 이력 변경 없음.
- *
- * 01-07. 저녁 DM 미리보기 [직접 실행]
- * - 함수: previewMyEveningBriefing()
- * - 기능: 현재 자료로 17:00 마무리 문안과 내일 회의·기한을 출력한다.
- * - 사용: 오늘 BOT_TASKS와 최신 Slack 완료본 준비 후 실행.
- * - 영향: 현재 캘린더 읽기만. DM·시트/속성/발송 이력 변경 없음.
- *
- * 01-08. 통합 문안 조회 [내부]
- * - previewPersonalAssistantBriefing_(slot): 시트 업무→회의→Slack→오전 점심→한마디 순서의 미리보기를 만들고 이력은 변경하지 않는다.
- *
- * 01-09. 조회 기준 한 줄 [내부]
- * - formatBriefingBasis_(now, slackAsOf, day, withCalendar, preview): 업무·회의 및 Slack 조회 시각을 정보 영역 끝 한 줄로 정리한다.
- * - 사용: 발송·미리보기 조립 시 자동 호출. 회차 숫자는 표시하지 않는다. 저장·외부 호출 없음.
+ * 내부 함수 (직접 실행하지 않음)
+ * - sendPmBriefings_(updatedTest, includeSlack, scheduledSlot, _unused, deliveryOptions): 업무 갱신·수신자 검증·중복 차단 후 개인 DM을 보내고 성공 이력을 저장한다
+ * - formatBriefingBasis_(now, slackAsOf, day, withCalendar, preview): 업무·회의 및 Slack 조회 시각을 정보 영역 끝 한 줄로 정리한다
+ * - describeSlackFailure_(error, props): 완료본 없음·최신성 초과·권한·인증·호출 제한을 짧은 안내로 바꾼다
+ * - buildPmSlackRoutes_(userRows, owners, issues): BOT_USERS에서 발송 대상(이름·Slack ID)을 만들고 명단 문제를 모은다
+ * - previewPersonalAssistantBriefing_(slot): 시트 업무→회의→Slack→오전 점심→한마디 순서의 미리보기를 만들고 이력은 변경하지 않는다
  */
 
 /** PM별 Slack 수신자 확인. 실행 로그에 ID 전체를 표시하거나 메시지를 보내지 않는다. */

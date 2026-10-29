@@ -1,45 +1,22 @@
 /**
- * 10. 응원문구
- * - 역할: 응원·마무리 한 줄 선택과 반복 방지
- * - 읽는 법: [직접 실행]은 편집기에서 선택, [내부]는 상위 함수가 필요한 인수를 전달해 자동 호출.
- * - 이름 끝 _ 는 내부 함수. 함수 식별자는 유지하므로 기존 트리거·호출 연결은 그대로 사용.
- * - 아래 번호는 안내 제목이며 실제 함수 이름 앞에 숫자를 입력하지 않는다.
+ * 10. 응원문구 — 오늘의 한마디 고르기(반복 방지)
  *
- * 10-01. 기본 문구 생성 [내부]
- * - defaultBriefingPhraseRows_(): 주제별 핵심 문장과 마무리를 조합해 오전·오후 각500개 행을 만든다.
+ * 알아둘 것
+ * - BOT_PHRASES 탭이 없으면 코드 문구(11번 파일)를 쓴다. 같은 날·회차·사람은 같은 문구.
  *
- * 10-02. 문구 목록 검증 [내부]
- * - validateBriefingPhraseRows_(rows): ID·회차·문장그룹·한 줄 길이·체크박스·중복을 검사한다.
+ * 직접 실행 (🔍 조회만 · ⚠️ 보내거나 바꿈 · ⏰ 자동 호출)
+ * - ⚠️ setupBotPhrases(): BOT_PHRASES 탭을 만들고 기본 문구 1,000개를 채운다(있으면 보존)
+ * - 🔍 previewBriefingPhraseSamples(): 회차별 활성 수·핵심 문장 수와 주제별 샘플을 로그로 출력한다
  *
- * 10-03. 문구 목록 읽기 [내부]
- * - readBriefingPhraseCatalog_(bot): BOT_PHRASES를 읽고 탭이 없으면 코드 기본 목록을 사용한다.
- *
- * 10-04. 문구 탭 준비 [직접 실행]
- * - 함수: setupBotPhrases()
- * - 기능: 지정된 브리핑 전용 탭에1000개 조합을 적재하며 기존 데이터는 보존한다.
- * - 사용: 문구를 시트에서 관리할 때1회 실행. 기존 문구는 보존.
- * - 영향: 브리핑 전용 BOT_PHRASES 탭 준비/적재. DM 없음.
- *
- * 10-05. 문구 이력 키 [내부]
- * - briefingPhraseStateKey_(route,slot): 수신자와 회차를 해시로 바꿔 이력 속성 이름을 만든다.
- *
- * 10-06. 문구 이력 읽기 [내부]
- * - readBriefingPhraseState_(props,key): 최근 문구·핵심 문장과 당일 선택 이력을 읽고 형식을 검증한다.
- *
- * 10-07. 오늘의 한 줄 선택 [내부]
- * - pickBriefingPhrase_(props,route,day,slot,catalog): 수신자·날짜·회차별로 최근 반복을 피하며 당일 같은 문구를 유지한다.
- *
- * 10-08. 한 줄 표시 [내부]
- * - formatBriefingPhrase_(selection): 오전/오후 표식과 선택 문장을 브리핑 끝 문안으로 만든다.
- *
- * 10-09. 문구 성공 이력 저장 [내부]
- * - markBriefingPhraseSent_(props,route,selection): 실제 DM 성공 후 당일 선택과 제한된 최근 이력을 속성에 저장한다. 영향: 문구 선택 이력 속성 저장.
- *
- * 10-10. 문구 샘플 확인 [직접 실행]
- * - 함수: previewBriefingPhraseSamples()
- * - 기능: 회차별 활성 수·핵심 문장 수와 주제별 샘플을 로그로 출력한다.
- * - 사용: 회차별 수량·문구 톤만 확인할 때 실행.
- * - 영향: 문구 목록 읽기만. DM·시트/이력 변경 없음.
+ * 내부 함수 (직접 실행하지 않음)
+ * - defaultBriefingPhraseRows_(): 주제별 핵심 문장과 마무리를 조합해 오전·오후 각500개 행을 만든다
+ * - validateBriefingPhraseRows_(rows): ID·회차·문장그룹·한 줄 길이·체크박스·중복을 검사한다
+ * - readBriefingPhraseCatalog_(bot): BOT_PHRASES를 읽고 탭이 없으면 코드 기본 목록을 사용한다
+ * - briefingPhraseStateKey_(route,slot): 수신자와 회차를 해시로 바꿔 이력 속성 이름을 만든다
+ * - readBriefingPhraseState_(props,key): 최근 문구·핵심 문장과 당일 선택 이력을 읽고 형식을 검증한다
+ * - pickBriefingPhrase_(props,route,day,slot,catalog): 수신자·날짜·회차별로 최근 반복을 피하며 당일 같은 문구를 유지한다
+ * - formatBriefingPhrase_(selection): 오전/오후 표식과 선택 문장을 브리핑 끝 문안으로 만든다
+ * - markBriefingPhraseSent_(props,route,selection): 실제 DM 성공 후 당일 선택과 제한된 최근 이력을 속성에 저장한다
  */
 
 /** 업무 브리핑 끝에 붙이는 한 줄. 기본 문구 생성·선택은 외부 API를 호출하지 않는다. */

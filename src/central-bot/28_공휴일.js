@@ -1,14 +1,20 @@
 /**
- * 28. 공휴일 — 정기 DM과 Slack 미리 수집을 쉬는 날(주말·공휴일·회사 휴무일)에 건너뛴다.
- * - briefingDayOff_(now): 쉬는 날이면 이유('주말' / '공휴일 · 이름' / '회사 휴무일'), 근무일이면 빈 문자열.
- *   공휴일은 Google "대한민국의 휴일" 캘린더에서 설명이 '공휴일'(영문 'Public holiday')인 종일 일정만 본다(어버이날 같은 기념일은 근무일).
- *   회사 휴무일은 스크립트 속성 COMPANY_HOLIDAYS(예: 2026-12-31,2027-01-02)에 적는다(BOT_SETTINGS로 반영 가능).
- *   하루 한 번만 캘린더를 읽고 속성에 저장해 둔다. 캘린더를 못 읽으면 근무일로 보고 보낸다(놓친 DM보다 한 통 더 가는 쪽이 안전).
- * - previewBriefingDayOff(): [직접 실행] 오늘과 앞으로 30일 안의 쉬는 날을 로그로 본다. 변경 없음.
- * - briefingLeaveRoutes_(routes, props, now): 오늘 연차인 PM 목록. 개인 캘린더 연결 자료에서 09~18시를 모두 덮는
- *   본인 일정 중 제목이 연차·휴가인 것만 본다(반차·반반차는 근무일). 다른 PM 이름이 든 제목(남의 휴가)은 제외.
- *   연결 자료가 없거나 읽기 실패면 보낸다. ENABLE_PERSONAL_LEAVE_SKIP=false면 끈다.
- * - noteBriefingLeave_(props, log, slot, items): 건너뛴 PM을 발송 기록(skipped-leave)과 관리자 요약용 속성에 남긴다.
+ * 28. 공휴일 — 주말·공휴일·회사 휴무일, 연차인 PM은 건너뛰기
+ *
+ * 알아둘 것
+ * - 공휴일은 '대한민국의 휴일' 캘린더의 공휴일만 본다(기념일은 근무일). 회사 휴무일은 COMPANY_HOLIDAYS.
+ * - 캘린더를 못 읽으면 근무일로 보고 보낸다(놓치는 것보다 안전).
+ * - 연차: 본인 캘린더의 종일 연차·휴가만(반차는 근무일). ENABLE_PERSONAL_LEAVE_SKIP=false면 끈다.
+ *
+ * 직접 실행 (🔍 조회만 · ⚠️ 보내거나 바꿈 · ⏰ 자동 호출)
+ * - 🔍 previewBriefingDayOff(): 오늘과 앞으로 30일 안의 쉬는 날을 로그로 본다
+ *
+ * 내부 함수 (직접 실행하지 않음)
+ * - briefingDayOff_(now): 쉬는 날이면 이유('주말' / '공휴일 · 이름' / '회사 휴무일'), 근무일이면 빈 문자열
+ * - briefingLeaveRoutes_(routes, props, now): 오늘 연차인 PM을 고른다(본인 캘린더의 종일 연차·휴가)
+ * - personalLeaveTitle_(route, registry, cached, now): 그 PM의 연결 캘린더에서 오늘 종일 연차·휴가 일정을 찾는다
+ * - noteBriefingLeave_(props, log, slot, items): 건너뛴 PM을 발송 기록(skipped-leave)과 관리자 요약용 속성에 남긴다
+ * - publicHolidayName_(day): 해당 날짜가 공휴일이면 이름, 아니면 빈 문자열
  */
 const DAY_OFF = Object.freeze({calendarId:'ko.south_korea#holiday@group.v.calendar.google.com', cacheKey:'BRIEFING_DAY_OFF'});
 

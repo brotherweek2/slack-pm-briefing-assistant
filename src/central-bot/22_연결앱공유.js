@@ -1,17 +1,20 @@
 /**
- * 22. 캘린더 연결 앱 보기 권한
- * - previewCalendarConnectorAccess(): 초대 명단의 보기 권한 조회만. 공유/DM/저장 없음.
- * - ensureCalendarConnectorAccess(): 지정 연결 앱에 초대 PM의 reader 권한만 추가. DM 없음.
- * - sendCalendarConnectionInvites(): ENABLE_CALENDAR_AUTO_SHARE=true이면 권한 확보 후 초대.
- *   기존 초대자도 권한을 보완하되 초대 DM은 다시 보내지 않는다.
- * - 준비: CONNECTOR_PROJECT_FILE_ID, CONNECTOR_ALLOWED_DOMAIN. 중앙 관리자만 Drive 승인 필요.
- * - calendarConnectorFile_: 실행 계정·파일 ID·종류·이름·소유자·공유 가능 여부 검사.
- * - calendarConnectorPermissions_: 페이지 끝까지 기존 권한 조회. 불완전 조회면 변경 중지.
- * - calendarConnectorAccess_: 기존 직접/도메인/공개 권한 유지. 편집/소유 권한을 낮추지 않음.
- * - ensureCalendarConnectorViewer_: user/reader만 추가하고 다시 조회. 알림 메일 없음.
- * - calendarShareApi_: 지정 파일의 metadata/permissions GET, permissions POST만 허용.
- *   자동 재전송·권한 수정/삭제·그룹/도메인/공개 공유 없음. 토큰·이메일 로그 출력 없음.
- * - 운영 시트 및 중앙 프로젝트를 공유하지 않는다. 기본 OFF, 권한 동의 전 기존 발송 유지.
+ * 22. 연결앱공유 — 연결 앱 파일 보기 권한 확인·추가
+ *
+ * 알아둘 것
+ * - 보기(reader) 권한만 추가한다. 기존 권한 수정·삭제, 그룹·공개 공유는 하지 않는다.
+ * - 준비: CONNECTOR_PROJECT_FILE_ID, CONNECTOR_ALLOWED_DOMAIN.
+ *
+ * 직접 실행 (🔍 조회만 · ⚠️ 보내거나 바꿈 · ⏰ 자동 호출)
+ * - 🔍 previewCalendarConnectorAccess(): 초대 명단의 보기 권한 조회만
+ * - ⚠️ ensureCalendarConnectorAccess(): 지정 연결 앱에 초대 PM의 reader 권한만 추가
+ *
+ * 내부 함수 (직접 실행하지 않음)
+ * - calendarShareApi_(fileId, path, query, body): 지정 파일의 metadata/permissions GET, permissions POST만 허용
+ * - calendarConnectorFile_(props): 실행 계정·파일 ID·종류·이름·소유자·공유 가능 여부 검사
+ * - calendarConnectorPermissions_(file): 페이지 끝까지 기존 권한 조회
+ * - calendarConnectorAccess_(permissions,email,domain): 연결 앱 파일에 PM 보기 권한을 확인·추가한다(기존 권한은 유지)
+ * - ensureCalendarConnectorViewer_(route,file): user/reader만 추가하고 다시 조회
  */
 function calendarShareApi_(fileId, path, query, body) {
   const allowed=path===''||path==='/permissions';

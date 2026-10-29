@@ -1,23 +1,17 @@
 /**
- * 17. 운영점검
- * 17-01. 운영 상태 확인 [직접 실행]
- * - previewBriefingHealth(): 계정 고정 여부·속성 저장량·봇 탭 행 수 확인.
- * - 사용: 업로드 후 실행. 설정·시트·트리거 변경 및 Slack 발송 없음.
- * 17-02. 실행 계정 고정 [직접 실행]
- * - pinBriefingExecutor(): 회사 계정인지 확인하고 실행 계정을 고정한다(다른 계정이 실행하면 봇 시트 접근을 막음). 속성 저장, DM 없음.
- * - 사용: 회사 계정에서 한 번 실행. 실행 계정 속성만 변경, DM 없음.
- * 17-03. 발송 로그 정리 [직접 실행]
- * - compactBriefingSendLog(): 지정 봇 파일의 BOT_SEND_LOG에서 90일 전 기록만 제거.
- * - 사용: previewBriefingHealth로 누적량 확인 후 실행. 유효하지 않은 날짜·최근 기록 보존.
- * - 원천 시트·수신자·트리거·캘린더·DM에는 영향 없음.
- * 17-04. 발송 로그 보관 [내부]
- * - retainBriefingSendLog_(sheet, rows, day): 브리핑 실행 잠금 안에서 90일 이력을 보존한다.
- * - 정기·통합 발송 전에 자동 호출. 최근 기록·판별 불가 날짜는 유지한다.
- * 17-05. 정확도 점검 [직접 실행]
- * - previewBriefingAccuracy(): 본인(PILOT_PM_NAME) 기준으로 봇이 본 업무와 Slack 글을 모두 나열한다.
- *   업무: 봇 시트 BOT_TASKS의 내 업무 종류별 건수와 키. Slack: 나에게 해당하는 글 중 DM 항목이 된 것(안내 여부)과
- *   분류에서 뺀 것(완료·LID·단순 언급 등). 실제 Slack·업무 시트와 나란히 놓고 빠진 것·잘못 들어간 것을 찾는다.
- * - 사용: 아무 때나. 봇 시트·저장된 Slack 자료만 읽는다. 원본 시트·Slack API·발송 이력 변경 및 DM 없음.
+ * 17. 운영점검 — 실행 계정 고정, 저장량 점검, 발송 기록 90일 보관, 정확도 점검
+ *
+ * 알아둘 것
+ * - 원천 시트·수신자·트리거·DM에는 영향이 없다.
+ *
+ * 직접 실행 (🔍 조회만 · ⚠️ 보내거나 바꿈 · ⏰ 자동 호출)
+ * - 🔍 previewBriefingHealth(): 계정 고정 여부·속성 저장량·봇 탭 행 수 확인
+ * - ⚠️ pinBriefingExecutor(): 회사 계정인지 확인하고 실행 계정을 고정한다(다른 계정이 실행하면 봇 시트 접근을 막음)
+ * - ⚠️ compactBriefingSendLog(): 지정 봇 파일의 BOT_SEND_LOG에서 90일 전 기록만 제거
+ * - 🔍 previewBriefingAccuracy(): 본인(PILOT_PM_NAME) 기준으로 봇이 본 업무와 Slack 글을 모두 나열한다
+ *
+ * 내부 함수 (직접 실행하지 않음)
+ * - retainBriefingSendLog_(sheet, rows, day): 브리핑 실행 잠금 안에서 90일 이력을 보존한다
  */
 function previewBriefingHealth() {
   const props = PropertiesService.getScriptProperties();

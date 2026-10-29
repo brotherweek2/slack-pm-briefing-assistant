@@ -1,20 +1,14 @@
 /**
- * 02. 캘린더일정
- * - 역할: PM 본인 연결(19번) 회의 캐시를 DM 회의 영역으로 표시
- * - 읽는 법: [직접 실행]은 편집기에서 선택, [내부]는 상위 함수가 필요한 인수를 전달해 자동 호출.
- * - 이름 끝 _ 는 내부 함수. 함수 식별자는 유지하므로 기존 트리거·호출 연결은 그대로 사용.
- * - 아래 번호는 안내 제목이며 실제 함수 이름 앞에 숫자를 입력하지 않는다.
+ * 02. 캘린더일정 — 회의 영역 문안(오늘·내일, 겹침·응답 전 안내)
  *
- * 02-01. 발송 직전 회의 조회 [내부]
- * - buildLiveCalendarSection_(route, props, slot, now): PM·이메일·Slack 연결을 확인하고 현재 시각의 개인 회의 문안을 만든다.
- * - ENABLE_SELF_CALENDAR_PIPELINE=true이면 본인 연결 앱의 최신 회의 캐시만 사용한다. 중앙 계정으로 대체 조회하지 않는다.
+ * 알아둘 것
+ * - PM 본인 연결 앱이 보낸 최신 회의만 쓴다. 중앙 계정으로 대신 조회하지 않는다.
  *
- * 02-02. 일일 회의 문안 [내부]
- * - formatCalendarBriefing_(snapshot, includeTomorrow): 오늘 남은 회의와 선택적으로 내일 회의를 시간·제목·응답 상태로 표시한다.
- *
- * 02-03. 회의 영역 제목 [내부]
- * - calendarSectionTitle_(includeTomorrow): 오전은 오늘 회의, 오후는 오늘·내일을 담는 회의 제목을 만든다.
- * - 사용: 회의 문안 조립 시 자동 호출. 캘린더 조회·저장·DM 없음.
+ * 내부 함수 (직접 실행하지 않음)
+ * - buildLiveCalendarSection_(route, props, slot, now, viewFrom): PM·이메일·Slack 연결을 확인하고 현재 시각의 개인 회의 문안을 만든다
+ * - calendarSectionTitle_(includeTomorrow): 오전은 오늘 회의, 오후는 오늘·내일을 담는 회의 제목을 만든다
+ * - formatCalendarBriefing_(snapshot, includeTomorrow): 오늘 남은 회의와 선택적으로 내일 회의를 시간·제목·응답 상태로 표시한다
+ * - calendarMeetingNotes_(snapshot, includeTomorrow): 회의 영역 끝 안내: 겹치는 회의, 응답하지 않은 초대
  */
 
 // 실제 발송 직전에만 호출. 다른 PM에게 실행 계정의 개인 일정을 배포하지 않는다.

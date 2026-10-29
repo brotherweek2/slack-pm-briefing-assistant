@@ -1,71 +1,42 @@
 /**
- * 05. 업무시트연결
- * - 역할: 브리핑 전용 탭 준비와 업무 후보 동기화
- * - 읽는 법: [직접 실행]은 편집기에서 선택, [내부]는 상위 함수가 필요한 인수를 전달해 자동 호출.
- * - 이름 끝 _ 는 내부 함수. 함수 식별자는 유지하므로 기존 트리거·호출 연결은 그대로 사용.
- * - 아래 번호는 안내 제목이며 실제 함수 이름 앞에 숫자를 입력하지 않는다.
+ * 05. 업무시트연결 — 봇 시트 탭 준비, 업무 시트 3개 읽어 BOT_TASKS 반영, 원본 연결·전환
  *
- * 05-01. 브리핑 탭 준비 [직접 실행]
- * - 함수: setupBotWorkbook()
- * - 기능: BOT_USERS·BOT_TASKS·발송 로그·일별 기록 탭을 준비하고 업무 후보를 갱신한다.
- * - 사용: 지정된 브리핑 전용 시트를 처음 준비할 때 실행.
- * - 영향: 봇 탭/업무/수신자·설정 속성 변경. 원천 읽기만, DM 없음.
+ * 알아둘 것
+ * - 원본 업무 시트는 읽기만 한다. 원본 주소는 스크립트 속성(ORIGINAL_…)에만 두고 코드·문서에 적지 않는다.
+ * - 정기 갱신은 수집기별로 격리한다: 원본 하나가 깨져도 그 업무만 직전 결과로 두고 나머지는 진행(전부 실패할 때만 중단).
+ * - 미리보기·전환(previewOriginalSheetConnection, switchToOriginalSheets)은 구조가 다르면 바로 멈춘다.
+ * - BOT_TASKS는 30일 넘게 안 보인 비활성 행을 50행 이상 모였을 때 정리한다(사람이 고친 행은 보존).
  *
- * 05-02. 업무 후보 갱신 [직접 실행]
- * - 함수: refreshBotTasks()
- * - 기능: 설정된 사본 시트를 읽어 현재 업무 후보와 담당자를 브리핑 전용 탭에 반영한다.
- * - 사용: 현재 원천 조건을 BOT_TASKS에 반영할 때 실행.
- * - 영향: 봇 업무·필요시 수신자 갱신. 원천 읽기만, DM 없음.
+ * 직접 실행 (🔍 조회만 · ⚠️ 보내거나 바꿈 · ⏰ 자동 호출)
+ * - ⚠️ setupBotWorkbook(): BOT_USERS·BOT_TASKS·발송 로그·일별 기록 탭을 준비하고 업무 후보를 갱신한다
+ * - ⚠️ refreshBotTasks(): 업무 시트 3개(지금은 원본)를 읽어 BOT_TASKS에 반영한다
+ * - 🔍 previewOriginalSheetConnection(): 원본 시트를 읽기만 해서 지금 연결된 시트와 업무 건수를 비교한다
+ * - 🔍 previewOriginalMyTasks(): 원본 기준 내(관리자) 업무를 한 건씩 보여 준다
+ * - 🔍 inspectOriginalSheetStructure(): 원본 세 시트의 탭 목록·머리글 줄과 수집기별 통과/실패를 보인다
+ * - ⚠️ switchToOriginalSheets(): 미리보기와 같은 읽기 검사를 통과하면 업무 시트 속성(SOURCE_SPREADSHEET_ID 등)을 원본으로 바꾼다
+ * - ⚠️ revertToCopySheets(): COPY_SHEETS_BACKUP으로 되돌린다
  *
- * 05-03. 업무 수집 통합 [내부]
- * - refreshBotTasks_({ bot, sourceId }): PM 담당 탭·헤즈업·HUB·검수·테스트 후보를 합쳐 동기화한다. 영향: 원천 읽기·봇 업무/수신자 갱신.
- *
- * 05-04. 종료 임박 후보 [내부]
- * - buildHaCvUpcomingTasks_(pm, records, day, sourceUrl, gid, now): 구축중이고 목표 종료일이 오늘부터 설정 일수 안인 프로젝트를 업무 행으로 만든다.
- *
- * 05-05. 날짜 일수 더하기 [내부]
- * - addDaysToIsoDate_(day, count): ISO 날짜에 지정 일수를 더한다.
- *
- * 05-06. 시트 날짜 통일 [내부]
- * - normalizeSheetDate_(value): 시트 Date·문자열 값을 비교 가능한 ISO 날짜로 바꾼다.
- *
- * 05-07. 열 번호 변환 [내부]
- * - columnLetters_(number): 열 번호를 A1 표기 열 문자로 바꾼다.
- *
- * 05-08. HUB 검토 후보 [내부]
- * - buildHaCvBotTasks_(byPm, now): PM·언어쌍별 검토 필요 인원과 근거 행 링크를 업무 행으로 만든다.
- *
- * 05-09. 헤즈업 후보 [내부]
- * - buildHaCvHeadsUpTasks_(byPm, now): PM·언어쌍별 헤즈업 대상 인원과 근거 행 링크를 업무 행으로 만든다.
- *
- * 05-10. 봇 탭 준비 [내부]
- * - ensureBotSheet_(bot, name, headers): 브리핑 파일에 없는 탭·헤더를 준비하고 기존 헤더가 다르면 중지한다. 영향: 호출자가 전달한 봇 파일의 탭/헤더 준비 가능.
- *
- * 05-11. 봇 탭 확인 [내부]
- * - requireBotSheet_(bot, name, headers): 필요한 탭과 헤더가 존재하는지 확인하며 없으면 중지한다.
- *
- * 05-12. 헤더 검증 [내부]
- * - assertBotHeaders_(sheet, headers): 탭 헤더가 예상 구조와 같은지 검사한다.
- *
- * 05-13. 담당자 목록 반영 [내부]
- * - syncBotUsers_(sheet, owners): 새 담당자만 BOT_USERS에 추가하고 기존 ID·발송 설정은 보존한다. 영향: BOT_USERS 새 담당자 행 추가.
- *
- * 05-14. 업무 후보 반영 [내부]
- * - syncBotTasks_(sheet, detected, keepPrefixes): 자동 필드를 갱신하고 사라진 후보는 비활성화하며 수동 승인·수정 칸은 보존한다.
- *   이번에 읽지 못한 업무 종류(keepPrefixes)는 비활성화하지 않는다. 영향: BOT_TASKS 자동 필드·활성 상태 갱신.
- *
- * 05-15. 원본 시트 연결 [직접 실행]
- * - 원본 ID는 코드·문서에 적지 않는다. 스크립트 속성 ORIGINAL_HACV_SPREADSHEET_ID / ORIGINAL_PM_REVIEW_SPREADSHEET_ID /
- *   ORIGINAL_TEST_MANAGEMENT_SPREADSHEET_ID에 원본 시트 주소나 ID를 넣는다(일부만 넣으면 그 시트만 바꾼다).
- * - previewOriginalSheetConnection(): 원본을 읽기만 해서 지금 쓰는 시트(사본)와 업무 종류·PM별 건수를 나란히 보인다.
- *   원본·봇 시트·속성 변경 및 DM 없음.
- * - inspectOriginalSheetStructure(): 원본 세 시트의 탭 목록·머리글 줄과 수집기별 통과/실패를 보인다. 구조가 바뀌었을 때 진단용.
- *   읽기만, 데이터 행은 출력하지 않음. 원본·봇 시트·속성 변경 및 DM 없음.
- * - ⚠️ switchToOriginalSheets(): 미리보기와 같은 읽기 검사를 통과하면 업무 시트 속성(SOURCE_SPREADSHEET_ID 등)을 원본으로 바꾼다.
- *   바꾸기 전 값은 COPY_SHEETS_BACKUP에 남긴다. 봇은 원본을 읽기만 하고 쓰지 않는다. 영향: 스크립트 속성만.
- * - ⚠️ revertToCopySheets(): COPY_SHEETS_BACKUP으로 되돌린다. 영향: 스크립트 속성만.
- * - collectAllWorkTasks_(source, pmReviewSource, testSource, now, options): 세 업무 시트에서 업무 행을 모은다(읽기만). 봇 시트 반영은 호출자가 한다.
- *   정기 갱신은 {tolerant:true}: 수집기 하나가 실패해도 나머지는 진행하고 failures로 알린다(그 업무는 직전 결과 유지).
+ * 내부 함수 (직접 실행하지 않음)
+ * - refreshBotTasksForRound_(props): 이어 보내기 묶음(4명씩)마다 원천 4개 시트를 다시 읽지 않도록, 같은 날 15분 안의 갱신 결과를 재사용한다
+ * - refreshBotTasks_({ bot, sourceId }): PM 담당 탭·헤즈업·HUB·검수·테스트 후보를 합쳐 동기화한다
+ * - buildHaCvUpcomingTasks_(pm, records, day, sourceUrl, gid, now): 구축중이고 목표 종료일이 오늘부터 설정 일수 안인 프로젝트를 업무 행으로 만든다
+ * - addDaysToIsoDate_(day, count): ISO 날짜에 지정 일수를 더한다
+ * - normalizeSheetDate_(value): 시트 Date·문자열 값을 비교 가능한 ISO 날짜로 바꾼다
+ * - columnLetters_(number): 열 번호를 A1 표기 열 문자로 바꾼다
+ * - buildHaCvBotTasks_(byPm, now): PM·언어쌍별 검토 필요 인원과 근거 행 링크를 업무 행으로 만든다
+ * - buildHaCvHeadsUpTasks_(byPm, now): PM·언어쌍별 헤즈업 대상 인원과 근거 행 링크를 업무 행으로 만든다
+ * - ensureBotSheet_(bot, name, headers): 브리핑 파일에 없는 탭·헤더를 준비하고 기존 헤더가 다르면 중지한다
+ * - requireBotSheet_(bot, name, headers): 필요한 탭과 헤더가 존재하는지 확인하며 없으면 중지한다
+ * - assertBotHeaders_(sheet, headers): 탭 헤더가 예상 구조와 같은지 검사한다
+ * - syncBotUsers_(sheet, owners): 새 담당자만 BOT_USERS에 추가하고 기존 ID·발송 설정은 보존한다
+ * - pruneBotTasks_(sheet, now): 30일 넘게 안 보인 비활성 업무 행을 정리한다(50행 이상 모였을 때)
+ * - syncBotTasks_(sheet, detected, keepPrefixes): 자동 필드를 갱신하고 사라진 후보는 비활성화하며 수동 승인·수정 칸은 보존한다
+ * - collectAllWorkTasks_(source, pmReviewSource, testSource, now, options): 세 업무 시트에서 업무 행을 모은다(읽기만)
+ * - sheetIdFromValue_(value): 시트 주소를 넣어도 ID만 꺼낸다
+ * - sheetValueHint_(raw): 시트 주소 형식 오류를 값 노출 없이 안내한다
+ * - originalSheetPlan_(props, alreadySwitched): 업무 시트별 지금 주소와 원본 주소를 대조한다
+ * - workTaskCounts_(parts): 업무 종류(업무 키 앞부분)·PM별 건수
+ * - openWorkSheets_(plan, field, label): 업무 시트 3개를 열고, 실패하면 어느 시트인지 알린다
  */
 
 /**

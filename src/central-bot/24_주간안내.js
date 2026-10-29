@@ -1,9 +1,14 @@
 /**
- * 24. 주간 안내 — 월요일 10:30·목/금요일 17:00에만 붙는 짧은 영역.
- * - formatWeeklyOutlook_(pm, rows, day, slot): 월요일 10:30 "이번 주 종료 예정"(언어쌍 목표 종료일),
- *   금요일 17:00 "다음 주 초 미리보기"(다음 주 월·화 기한 업무). 해당 요일·회차가 아니면 빈 문자열.
- * - formatWeekendCountdown_(day, slot): 목요일 17:00 "주말까지 D-2", 금요일 17:00 "D-1 · 좋은 주말 보내세요".
- * - 영향: 계산만. 시트 읽기는 이미 읽어 둔 BOT_TASKS 행만 쓴다. 저장·DM 없음(발송부가 문안에 붙임).
+ * 24. 주간안내 — 월요일 오전 이번 주 종료 예정, 금요일 마무리 다음 주 초 미리보기
+ *
+ * 알아둘 것
+ * - 월요일 10:30·목/금요일 17:00에만 붙는다. 이미 읽어 둔 BOT_TASKS만 쓴다.
+ *
+ * 내부 함수 (직접 실행하지 않음)
+ * - weeklyDayOfWeek_(day): 날짜의 요일을 숫자로 구한다
+ * - weeklyTaskDay_(value): 업무 기한 값을 날짜(yyyy-MM-dd)로 맞춘다
+ * - formatWeeklyOutlook_(pm, rows, day, slot): 월요일 10:30 "이번 주 종료 예정"(언어쌍 목표 종료일), 금요일 17:00 "다음 주 초 미리보기"(다음 주 월·화 기한 업무)
+ * - formatWeekendCountdown_(day, slot): 목요일 17:00 "주말까지 D-2", 금요일 17:00 "D-1 · 좋은 주말 보내세요"
  */
 function weeklyDayOfWeek_(day) {
   return new Date(Date.parse(day + 'T00:00:00Z')).getUTCDay(); // 0=일 … 5=금

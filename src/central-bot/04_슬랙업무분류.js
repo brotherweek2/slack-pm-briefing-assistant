@@ -1,61 +1,36 @@
 /**
- * 04. 슬랙업무분류
- * - 역할: 멘션을 업무 키워드로 묶고 개인 DM에 필요한 안내 선택
- * - 읽는 법: [직접 실행]은 편집기에서 선택, [내부]는 상위 함수가 필요한 인수를 전달해 자동 호출.
- * - 이름 끝 _ 는 내부 함수. 함수 식별자는 유지하므로 기존 트리거·호출 연결은 그대로 사용.
- * - 아래 번호는 안내 제목이며 실제 함수 이름 앞에 숫자를 입력하지 않는다.
+ * 04. 슬랙업무분류 — 멘션을 업무별로 묶고 DM에 넣을 항목 고르기
  *
- * 04-01. 분류용 본문 정리 [내부]
- * - slackDigestPlain_(text): 링크·멘션·서식을 덜어내 검색 가능한 본문을 만든다.
+ * 알아둘 것
+ * - 발송 이력은 읽음·완료 기록이 아니다. 사람별 최근 150개 해시만 보관한다.
  *
- * 04-02. 작업 종류 찾기 [내부]
- * - slackDigestWorkNames_(text): 제목과 업무 키워드에서 HA-CV·HT·MTPE 등의 작업 종류를 찾는다.
+ * 직접 실행 (🔍 조회만 · ⚠️ 보내거나 바꿈 · ⏰ 자동 호출)
+ * - 🔍 previewSavedSlackBriefings(): 완료된 저장 자료를 현재 규칙으로 다시 분류해 전체 목록을 출력한다
  *
- * 04-03. 메시지 업무 분류 [내부]
- * - classifySlackDigest_(record): 요청·업무 유형·프로젝트·언어쌍·명시 기한·불확실성을 판별한다.
- *
- * 04-04. 명시 기한 발췌 [내부]
- * - slackDigestDeadline_(line): 원문에 적힌 날짜·시간 표현만 짧게 추출한다.
- *
- * 04-05. 반복 댓글 묶기 [내부]
- * - buildSlackDigestItems_(records): 동일 PM·범위·스레드·업무·프로젝트의 반복 안내를 묶고 링크·조건을 보존한다.
- *
- * 04-06. 전체 분류 문안 [내부]
- * - formatSlackDigestSections_(pm, items, options): 점검용으로 우선 확인과 업무별 링크 목록을 전부 표시한다.
- *
- * 04-07. DM 항목 선택 [내부]
- * - selectPersonalSlackItems_(pm, items, seen, day, slot): 새·변경 안내와 명시된 오늘 기한, 저녁의 내일 기한을 선택한다.
- *
- * 04-08. 간결한 DM 문안 [내부]
- * - formatPersonalSlackDigest_(items, day, slot): 개인·BBPM을 구분하고 키워드 링크·원문 날짜·기한을 표시한다.
- *
- * 04-09. 원문 날짜 표시 [내부]
- * - slackDigestPostedAt_(ts): Slack 메시지 시각을 한국 시간 월/일로 표시한다.
- *
- * 04-10. 기한 날짜 해석 [내부]
- * - slackDigestDueDay_(item): 명시 날짜나 원문 작성일 기준 상대 날짜를 판별하고 불명확하면 비워 둔다.
- *
- * 04-11. 업무 링크 제목 [내부]
- * - slackDigestDisplayKeywords_(item): 작업명·업무·프로젝트·언어쌍·주의 조건을 짧은 링크 제목으로 만든다.
- *
- * 04-12. 저장 분류 미리보기 [직접 실행]
- * - 함수: previewSavedSlackBriefings()
- * - 기능: 완료된 저장 자료를 현재 규칙으로 다시 분류해 전체 목록을 출력한다.
- * - 사용: 저장 자료의 전체 분류만 점검할 때 실행.
- * - 영향: 읽기만. DM·시트/이력 변경·Slack 호출 없음.
- *
- * 04-13. 저장 분류 읽기 [내부]
- * - readSavedSlackItems_(props, emitPreview, lockHeld): 완료본과 수신자·규칙·발송 이력을 읽으며 최초 완료본 전에는 구 캐시로 연결한다.
- *
- * 04-14. 발송 항목 해시 [내부]
- * - slackDigestFingerprint_(item): 원문 링크·본문·부모 문맥을 해시로 바꿔 변경 여부를 구분한다.
- *
- * 04-15. 발송 이력 읽기 [내부]
- * - readSlackDigestSeen_(props, id): 수신자별 최근 발송 해시를 읽고 형식을 확인한다. 읽음·완료 상태는 아니다.
- *
- * 04-16. 발송 이력 저장 [내부]
- * - markSlackDigestSeen_(props, id, old, items, current): 성공한 DM에 표시한 항목의 해시만 스크립트 속성에 저장한다.
- *   150개를 넘으면 수집 범위를 벗어난 해시부터 지운다. 아직 범위 안의 글(current)은 남겨 "새 소식"으로 다시 나오지 않게 한다. 영향: 발송 해시 속성 저장.
+ * 내부 함수 (직접 실행하지 않음)
+ * - slackDigestPlain_(text): 링크·멘션·서식을 덜어내 검색 가능한 본문을 만든다
+ * - slackDigestWorkNames_(text): 제목과 업무 키워드에서 HA-CV·HT·MTPE 등의 작업 종류를 찾는다
+ * - classifySlackDigest_(record): 요청·업무 유형·프로젝트·언어쌍·명시 기한·불확실성을 판별한다
+ * - slackDigestDeadline_(line): 원문에 적힌 날짜·시간 표현만 짧게 추출한다
+ * - buildSlackDigestItems_(records): 동일 PM·범위·스레드·업무·프로젝트의 반복 안내를 묶고 링크·조건을 보존한다
+ * - formatSlackDigestSections_(pm, items, options): 점검용으로 우선 확인과 업무별 링크 목록을 전부 표시한다
+ * - selectPersonalSlackItems_(pm, items, seen, day, slot): 새·변경 안내와 명시된 오늘 기한, 저녁의 내일 기한을 선택한다
+ * - formatPersonalSlackDigest_(items, day, slot, attachedCount): 개인·BBPM을 구분하고 키워드 링크·원문 날짜·기한을 표시한다
+ * - slackDigestDueLabel_(due, raw): 날짜를 계산할 수 있는 기한은 '10/22(목)'로 통일한다(익일·내일·'10/22 (목)' 혼용 방지)
+ * - slackDigestDetailLine_(item): 누르기 전에 무슨 일인지 알 수 있게 작성자와 원문 첫 구절을 하위 줄로 붙인다
+ * - slackAuthorShortName_(name): 회사 표시 이름이 '이름/팀/아이디' 형식이라 앞의 이름만 쓴다
+ * - slackDigestSnippetText_(snippet): [제목]은 그대로, 본문 구절은 따옴표로 감싼다
+ * - slackDigestSnippet_(item): 고르는 순서: 원문의 [제목] → 멘션·인사말을 뺀 내용 있는 첫 줄 → (답글에 내용이 없으면) 스레드 부모의 [제목]
+ * - attachSlackToWorkLines_(workText, items, day): 시트 업무와 같은 종류의 Slack 항목을 그 업무 줄 아래로 옮긴다
+ * - attachSlackAuthorNames_(items, token, readOnly): 작성자 Slack ID → 표시 이름
+ * - slackDigestDeadlineText_(item, due): DM 기한 표기 공통: 짧고 명시된 기한만 통일 표기, 여러 개·불명확하면 '원문 확인'으로 경고를 남긴다
+ * - slackDigestPostedAt_(ts): Slack 메시지 시각을 한국 시간 월/일로 표시한다
+ * - slackDigestDueDay_(item): 명시 날짜나 원문 작성일 기준 상대 날짜를 판별하고 불명확하면 비워 둔다
+ * - slackDigestDisplayKeywords_(item): 작업명·업무·프로젝트·언어쌍·주의 조건을 짧은 링크 제목으로 만든다
+ * - readSavedSlackItems_(props, emitPreview): 완료본과 수신자·규칙·발송 이력을 읽으며 최초 완료본 전에는 구 캐시로 연결한다
+ * - slackDigestFingerprint_(item): 원문 링크·본문·부모 문맥을 해시로 바꿔 변경 여부를 구분한다
+ * - readSlackDigestSeen_(props, id): 수신자별 최근 발송 해시를 읽고 형식을 확인한다
+ * - markSlackDigestSeen_(props, id, old, items, current): 성공한 DM에 표시한 항목의 해시만 스크립트 속성에 저장한다
  */
 
 /** 무료 규칙 기반 분류. 원문에 없는 담당자·기한·완료를 생성하지 않는다. */

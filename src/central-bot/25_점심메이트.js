@@ -1,16 +1,20 @@
 /**
- * 25. 점심 메이트 — 10:30 점심 추천에서 "같은 식당을 추천받은 동료"를 서로 보여 준다.
- * - 켜고 끄기는 PM이 DM의 버튼으로 직접 한다(관리자 설정 없음). 기본값은 꺼짐: 켠 사람끼리만 이름이 보인다.
- * - 같은 식당이 실제로 겹치도록, 켠 사람들에게는 날마다 "오늘의 메이트 식당"(3명당 1곳)을 고정해 나눠 준다.
- *   켜지 않은 PM의 추천 방식은 그대로다.
- * - 버튼은 ENABLE_LUNCH_MATE=true일 때만 보인다(Slack 앱에 버튼 응답 주소를 등록한 뒤 켠다).
+ * 25. 점심메이트 — 점심 메이트 버튼, 같은 식당 매칭
  *
- * - lunchMateParticipants_(props, userRows): 발송 TRUE이면서 버튼으로 켠 PM(오늘 연차인 PM 제외). 묶음과 무관하게 전원 기준이라 묶음마다 결과가 같다.
- * - lunchMatePlan_(participants, catalog, day): 참여자 Slack ID → 오늘의 메이트 식당.
- * - applyLunchMate_(selection, plan, route, day): 켠 사람의 식사 추천을 메이트 식당으로 바꾼다(가볍게 추천은 그대로).
- * - formatLunchMateLine_(route, plan, participants): "🤝 오늘 ○○ 메이트: 이름 님" 한 줄.
- * - lunchMateButtonBlock_(on): DM에 붙일 켜기/끄기 버튼 블록. insertLunchMateButton_(blocks, block): 점심 영역 바로 아래에 넣는다.
- * - handleSlackInteraction_(e): [웹 앱] Slack 버튼 응답 처리. 검증 토큰(SLACK_VERIFICATION_TOKEN)이 맞을 때만 누른 본인의 설정만 바꾼다.
+ * 알아둘 것
+ * - 켜고 끄기는 PM이 DM 버튼으로 직접 한다(기본 꺼짐). 켠 사람끼리만 3명당 1곳 같은 식당.
+ * - 버튼은 ENABLE_LUNCH_MATE=true일 때만 보인다.
+ *
+ * 내부 함수 (직접 실행하지 않음)
+ * - lunchMateOn_(props, slackId): 이 PM이 점심 메이트를 켰는지
+ * - lunchMateParticipants_(props, userRows): 발송 TRUE이면서 버튼으로 켠 PM(오늘 연차인 PM 제외)
+ * - lunchMateHash_(text): 날짜·ID로 섞기용 숫자를 만든다
+ * - lunchMatePlan_(participants, catalog, day): 참여자 Slack ID → 오늘의 메이트 식당
+ * - applyLunchMate_(selection, plan, route, day): 켠 사람의 식사 추천을 메이트 식당으로 바꾼다(가볍게 추천은 그대로)
+ * - formatLunchMateLine_(route, plan, participants): "🤝 오늘 ○○ 메이트: 이름 님" 한 줄
+ * - lunchMateButtonBlock_(on): DM에 붙일 켜기/끄기 버튼 블록
+ * - insertLunchMateButton_(blocks, block): 점심 영역(🍚로 시작하는 section) 바로 아래에 버튼을 넣는다
+ * - handleSlackInteraction_(e): [웹 앱] Slack 버튼 응답 처리
  */
 const LUNCH_MATE = Object.freeze({prefix:'LUNCH_MATE_', actionId:'lunch_mate_toggle', groupSize:3});
 

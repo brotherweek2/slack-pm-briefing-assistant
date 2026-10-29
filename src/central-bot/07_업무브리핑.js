@@ -1,64 +1,29 @@
 /**
- * 07. 업무브리핑
- * - 역할: 시트 업무 요약·개인 미리보기·공통 표시
- * - 읽는 법: [직접 실행]은 편집기에서 선택, [내부]는 상위 함수가 필요한 인수를 전달해 자동 호출.
- * - 이름 끝 _ 는 내부 함수. 함수 식별자는 유지하므로 기존 트리거·호출 연결은 그대로 사용.
- * - 아래 번호는 안내 제목이며 실제 함수 이름 앞에 숫자를 입력하지 않는다.
+ * 07. 업무브리핑 — 업무 6종을 DM 문안으로
  *
- * 07-01. 전체 PM 업무 미리보기 [직접 실행]
- * - 함수: refreshAndPreviewPmBriefings()
- * - 기능: 업무를 갱신하고 일별 이력을 저장한 뒤 PM별 시트 문안을 로그로 출력한다.
- * - 사용: 현재 시트 업무를 갱신하고 PM별로 점검할 때 실행.
- * - 영향: BOT_TASKS·BOT_DAILY_HISTORY·필요시 BOT_USERS 변경. DM 없음.
+ * 알아둘 것
+ * - 업무 6종: 언어쌍 종료 임박·헤즈업·예비 작업자 검토·어뷰저 관리·1차 검수·테스트지 검토.
  *
- * 07-02. 브리핑 담당자 선택 [내부]
- * - selectHaCvPreviewOwners_(pmNames, rows): 수집된 담당자와 활성 업무 담당자의 합집합을 고른다.
+ * 직접 실행 (🔍 조회만 · ⚠️ 보내거나 바꿈 · ⏰ 자동 호출)
+ * - ⚠️ refreshAndPreviewPmBriefings(): 업무를 갱신하고 일별 이력을 저장한 뒤 PM별 시트 문안을 로그로 출력한다
  *
- * 07-03. 지원 업무 확인 [내부]
- * - isHaCvBriefingTask_(key): 업무 키가 현재 지원하는 6종 알림인지 확인한다.
- *
- * 07-04. 시트 업무 문안 [내부]
- * - formatHaCvBriefing_(pm, rows, day, trend, mode, basis): PM별 업무와 인원·링크·검수 기한을 간결하게 만든다.
- *
- * 07-05. 오전·오후 업무 제목 [내부]
- * - formatPersonalWorkBriefing_(pm, rows, day, trend, slot, preview): 같은 업무 조건을 유지하며 날짜·요일과 오전/마무리 인사를 붙인다. preview=true이면 미리보기로 표시. 조회 시각은 발송부에서 조립한다.
- *
- * 07-06. 업무 유형별 표시 [내부]
- * - appendCompactHaCvGroup_(lines, label, rows, count, unit, day): 종료·인원은 건수, 어뷰저는 날짜, 직접 검수는 각 파일 링크·기한을 붙인다.
- *
- * 07-07. 시트 링크 확인 [내부]
- * - isSheetUrl_(url): Google 스프레드시트 링크인지 확인한다.
- *
- * 07-08. 짧은 날짜 [내부]
- * - formatShortDate_(value): ISO 날짜를 월/일로 표시한다.
- *
- * 07-09. 기한 표시 [내부]
- * - formatDueLabel_(date, day): 오늘·경과·미정 등을 포함해 기한을 표시한다.
- *
- * 07-10. 작업자 인원 합산 [내부]
- * - summarizeHaCvCounts_(rows): 헤즈업·HUB 근거 행 수로 담당자별 인원을 합산한다.
- *
- * 07-11. 오늘 업무인지 확인 [내부]
- * - assertFreshPilotTasks_(tasks, day): 저장 업무가 오늘 갱신됐는지 확인하고 오래되면 중지한다.
- *
- * 07-12. 봇 탭 행 읽기 [내부]
- * - readBotRows_(sheet, width): 헤더 다음의 필요한 열만 읽는다.
- *
- * 07-13. 본인 수신자 확인 [내부]
- * - findPilotRecipient_(rows): 시범 PM의 Slack ID와 발송 활성 여부를 찾는다.
- *
- * 07-14. 시범 PM 선택 [내부]
- * - getPilotPmName_(rows): 설정된 이름을 우선하고 없으면 ID가 등록된 유일한 PM을 선택한다.
- *
- * 07-15. Slack ID 가리기 [내부]
- * - maskPilotId_(id): 로그에 Slack ID 일부만 표시한다.
- *
- * 07-16. 표시 날짜 정리 [내부]
- * - formatPilotDate_(value): Date 또는 문자열 날짜를 문안용 문자열로 바꾼다.
- *
- * 07-17. 날짜·요일 표시 [내부]
- * - formatBriefingDay_(day): yyyy-MM-dd를 MM/dd(요일)로 바꾼다.
- * - 사용: 개인 브리핑 첫 줄 조립 시 호출. 외부 조회·저장·DM 없음.
+ * 내부 함수 (직접 실행하지 않음)
+ * - selectHaCvPreviewOwners_(pmNames, rows): 수집된 담당자와 활성 업무 담당자의 합집합을 고른다
+ * - isHaCvBriefingTask_(key): 업무 키가 현재 지원하는 6종 알림인지 확인한다
+ * - formatHaCvBriefing_(pm, rows, day, trend, mode, basis): PM별 업무와 인원·링크·검수 기한을 간결하게 만든다
+ * - formatPersonalWorkBriefing_(pm, rows, day, trend, slot, preview): 같은 업무 조건을 유지하며 날짜·요일과 오전/마무리 인사를 붙인다
+ * - formatBriefingDay_(day): yyyy-MM-dd를 MM/dd(요일)로 바꾼다
+ * - appendCompactHaCvGroup_(lines, label, rows, count, unit, day): 종료·인원은 건수, 어뷰저는 날짜, 직접 검수는 각 파일 링크·기한을 붙인다
+ * - isSheetUrl_(url): Google 스프레드시트 링크인지 확인한다
+ * - formatShortDate_(value): ISO 날짜를 월/일로 표시한다
+ * - formatDueLabel_(date, day): 오늘·경과·미정 등을 포함해 기한을 표시한다
+ * - summarizeHaCvCounts_(rows): 헤즈업·HUB 근거 행 수로 담당자별 인원을 합산한다
+ * - assertFreshPilotTasks_(tasks, day): 저장 업무가 오늘 갱신됐는지 확인하고 오래되면 중지한다
+ * - readBotRows_(sheet, width): 헤더 다음의 필요한 열만 읽는다
+ * - findPilotRecipient_(rows): 시범 PM의 Slack ID와 발송 활성 여부를 찾는다
+ * - getPilotPmName_(rows): 설정된 이름을 우선하고 없으면 ID가 등록된 유일한 PM을 선택한다
+ * - maskPilotId_(id): 로그에 Slack ID 일부만 표시한다
+ * - formatPilotDate_(value): Date 또는 문자열 날짜를 문안용 문자열로 바꾼다
  */
 
 /** 현재 개인 브리핑의 공통 문안과 시트 미리보기. */

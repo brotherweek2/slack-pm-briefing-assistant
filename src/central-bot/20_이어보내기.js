@@ -1,13 +1,20 @@
 /**
- * 20. 연결 PM 정기 DM 이어 보내기 — 연결 PM 확대 모드에서만 사용.
- * - startConnectedBriefingRound_: 회차(10:30·14:00·17:00)별 수신자 명단 고정·회차 생성. 4명씩 처리.
- * - resumeConnectedBriefingSend(): 예약된 미처리 대상만 실제 DM 발송. 수동 실행도 발송 가능.
- *   날짜/회차/현재 승인/연결/발송 여부 재검사. 결과 불명확 건은 자동 재전송하지 않는다.
- * - previewConnectedSendProgress(): 대기 수·시도 수·상태 조회만. ID·내용 출력 없음.
- * - scheduleConnectedSendResume_/clearConnectedSendResume_: 현재 계정의 전용 일회성 트리거만 관리.
- * - enabledConnectedSend_: 관리자 허용 및 기존 실행 계정/봇 대상 확인.
- * - 제한: 회차 시작 20분 이내·최대 12회 시도. 다음날/다른 회차로 이월하지 않는다.
- * - 실제 정기 실행 시에만 이어 보내기 트리거를 생성. 업로드만으로 설치/발송하지 않음.
+ * 20. 이어보내기 — 회차 대상을 4명씩 나눠 이어 보내기(20분·최대 12번)
+ *
+ * 알아둘 것
+ * - 회차 시작 20분 안·최대 12번까지만. 다음 날이나 다른 회차로 넘기지 않는다.
+ * - 결과가 불확실한 DM은 자동으로 다시 보내지 않는다.
+ * - 업로드만으로는 트리거가 생기지 않는다(정기 실행 때만 예약).
+ *
+ * 직접 실행 (🔍 조회만 · ⚠️ 보내거나 바꿈 · ⏰ 자동 호출)
+ * - ⏰ resumeConnectedBriefingSend(): 회차의 남은 대상에게 4명씩 실제 DM을 보낸다(수동 실행해도 발송됨)
+ * - 🔍 previewConnectedSendProgress(): 대기 수·시도 수·상태 조회만
+ *
+ * 내부 함수 (직접 실행하지 않음)
+ * - enabledConnectedSend_(props): 관리자 허용 및 기존 실행 계정/봇 대상 확인
+ * - startConnectedBriefingRound_(slot): 회차(10:30·14:00·17:00)별 수신자 명단 고정·회차 생성
+ * - scheduleConnectedSendResume_(delayMs): 다음 이어 보내기 일회성 트리거를 예약한다(이전 예약은 교체)
+ * - clearConnectedSendResume_(): 이어 보내기 예약 트리거를 지운다
  */
 const CONNECTED_SEND_LIMITS = Object.freeze({batchSize:4,maxAttempts:12});
 

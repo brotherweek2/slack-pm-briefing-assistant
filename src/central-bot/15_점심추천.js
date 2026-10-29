@@ -1,13 +1,23 @@
 /**
- * 15. 점심추천
- * - 역할:10:30 DM에 식당1곳과 카페·편의점 간단식1곳의 짧은 추천 문장을 붙인다.
- * - 기본목록은16번 파일. BOT_RESTAURANTS가 있으면 해당 탭만 사용한다.
- * - 직접 실행 함수 이외에는 상위 함수가 호출한다. 유료 API·실시간 메뉴 검색 없음.
+ * 15. 점심추천 — 10:30 점심 추천(식당 1곳 + 카페·편의점 1곳)
  *
- * 직접 실행 함수
- * - setupBotRestaurants(): 봇 시트에 BOT_RESTAURANTS 탭을 만들고 기본 식당 목록을 채운다. 이미 있으면 그대로 둔다. DM 없음.
- * - previewMyLunchRecommendation(): 오늘 본인에게 갈 점심 추천을 로그로만 보여준다. 추천 이력·DM 변경 없음.
- * - updateBotLunchRecommendations(): BOT_RESTAURANTS의 예전 항목(대기·점심 아님)을 새 기본값으로 고치고 요청받아 뺀 식당을 지운다. 시트 변경, DM 없음.
+ * 알아둘 것
+ * - 기본 목록은 16번 파일, BOT_RESTAURANTS 탭이 있으면 그 탭만 쓴다. 유료 API·실시간 메뉴 검색 없음.
+ *
+ * 직접 실행 (🔍 조회만 · ⚠️ 보내거나 바꿈 · ⏰ 자동 호출)
+ * - ⚠️ setupBotRestaurants(): 봇 시트에 BOT_RESTAURANTS 탭을 만들고 기본 식당 목록을 채운다
+ * - 🔍 previewMyLunchRecommendation(): 오늘 본인에게 갈 점심 추천을 로그로만 보여준다
+ * - ⚠️ updateBotLunchRecommendations(): BOT_RESTAURANTS 탭의 예전 항목을 새 기본값으로 고친다
+ *
+ * 내부 함수 (직접 실행하지 않음)
+ * - defaultLunchRestaurantRows_(): 코드에 든 기본 식당 목록을 표 행으로 만든다
+ * - validateLunchRestaurantRows_(rows): 식당 목록 형식(ID·분류·메뉴·상태)을 검사한다
+ * - readLunchRestaurantCatalog_(bot): BOT_RESTAURANTS 탭을 읽고, 없으면 기본 목록을 쓴다
+ * - lunchRecommendationStateKey_(route,kind): PM별 점심 추천 이력의 속성 이름(해시)
+ * - readLunchRecommendationState_(props,key): 점심 추천 이력(최근 식당·오늘 선택)을 읽는다
+ * - pickLunchRecommendation_(props,route,day,slot,catalog,kind): 오늘 PM에게 줄 식당·간단식을 고른다(날짜·사람 해시, 최근 7회 제외)
+ * - formatLunchRecommendation_(selection): 점심 추천 DM 문안
+ * - markLunchRecommendationSent_(props,route,selection): 발송 성공 뒤 점심 추천 이력을 저장한다
  */
 const BOT_RESTAURANTS = Object.freeze({tab:'BOT_RESTAURANTS',checkedAt:'2026-10-19',recent:7,historyLimit:20,
   headers:['restaurant_id','name','category','experience_observed','menu_1','menu_2','menu_3',

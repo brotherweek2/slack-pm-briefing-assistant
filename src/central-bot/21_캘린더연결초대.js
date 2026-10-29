@@ -1,21 +1,24 @@
 /**
- * 21. Slack DM으로 개인 캘린더 연결
- * - previewCalendarConnectionInvites(): 지정 PM의 초대 문안·중복 상태 조회만. 발송/저장 없음.
- * - sendCalendarConnectionInvites(): 관리자 지정 PM에게 실제 연결 링크 DM. 초대 이력 저장.
- *   ENABLE_CALENDAR_AUTO_SHARE=true이면 22번 파일로 연결 앱 보기 권한 확보 후 DM.
- *   기존 초대자의 권한도 보완하되 중복 DM은 보내지 않는다. 공유 실패 대상은 DM 중지.
- *   CALENDAR_CONNECT_URL, CALENDAR_ONBOARDING_READY=true 필요. 초대 대상은 BOT_USERS E열 calendar_connect에
- *   체크된 사람 중 아직 초대 기록이 없는 사람(한 번에 25명). 열이 없으면 예전 CALENDAR_INVITE_PM_NAMES JSON.
- * - setupCalendarConnectColumn(): BOT_USERS E열에 calendar_connect 체크박스를 만들고, 예전 이메일 명단
- *   (SELF_CALENDAR_ALLOWED_EMAILS)에 있던 사람을 미리 체크한다. 이 탭의 E열만 변경. DM·속성·트리거 변경 없음.
- * - calendarInviteSetup_: 실제 배포 URL·개인 연결 모드·정기 트리거·허용 명단 확인.
- * - calendarInviteKey_/calendarInviteRecord_: 등록 이메일과 Slack ID에 묶인 비공개 초대 이력.
- * - calendarInviteMessage_: 초대 DM의 계정 승인/연결 안내 생성. 발송 없음.
- * - activateCalendarOnboarding_: 본인 인증·초대·연결 세션 대조 후 봇 전용 BOT_USERS C만 활성화.
- * - calendarOnboardingNotice_: 본인 연결 완료 DM. 응답 유실 시 중복 전송 차단.
- * - calendarEnrollmentFlag_: 지정 봇의 현재 행/계정을 다시 대조한 뒤 발송 값만 변경.
- * - disconnectCalendarOnboarding_: 이 연결이 자동 활성화했던 발송만 해제. 기존 활성 설정 보존.
- * - 원본/운영 시트 변경 없음. 초대 대상 및 개인 식별자는 코드에 넣지 않는다.
+ * 21. 캘린더연결초대 — 캘린더 연결 초대 DM, 연결 완료 처리
+ *
+ * 알아둘 것
+ * - 초대 대상: BOT_USERS E열 calendar_connect에 체크됐고 아직 초대 기록이 없는 사람(한 번에 25명).
+ * - CALENDAR_CONNECT_URL, CALENDAR_ONBOARDING_READY=true가 필요하다.
+ *
+ * 직접 실행 (🔍 조회만 · ⚠️ 보내거나 바꿈 · ⏰ 자동 호출)
+ * - 🔍 previewCalendarConnectionInvites(): 지정 PM의 초대 문안·중복 상태 조회만
+ * - ⚠️ sendCalendarConnectionInvites(): 관리자 지정 PM에게 실제 연결 링크 DM
+ * - ⚠️ setupCalendarConnectColumn(): BOT_USERS E열에 calendar_connect 체크박스를 만든다(예전 이메일 명단은 미리 체크)
+ *
+ * 내부 함수 (직접 실행하지 않음)
+ * - calendarInviteKey_(route): PM별 초대 이력의 속성 이름(이메일·Slack ID 해시)
+ * - calendarInviteRecord_(props,route): 그 PM의 초대 이력을 읽는다
+ * - calendarInviteSetup_(props): 실제 배포 URL·개인 연결 모드·정기 트리거·허용 명단 확인
+ * - calendarInviteMessage_(route,url): 초대 DM의 계정 승인/연결 안내 생성
+ * - calendarEnrollmentFlag_(route,props,enabled): 지정 봇의 현재 행/계정을 다시 대조한 뒤 발송 값만 변경
+ * - activateCalendarOnboarding_(r,props,route): 본인 인증·초대·연결 세션 대조 후 봇 전용 BOT_USERS C만 활성화
+ * - calendarOnboardingNotice_(props,route,record,state): 연결 완료 DM을 보낸다(중복 전송 차단)
+ * - disconnectCalendarOnboarding_(r,props,route): 이 연결이 자동 활성화했던 발송만 해제
  */
 function calendarInviteKey_(route) {
   return 'CALENDAR_INVITE_'+Utilities.base64EncodeWebSafe(Utilities.computeDigest(

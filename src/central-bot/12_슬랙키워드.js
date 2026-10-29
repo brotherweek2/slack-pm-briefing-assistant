@@ -1,24 +1,15 @@
 /**
- * 12. 슬랙키워드
- * - 역할: 업무 분류용 키워드 목록 읽기와 검색
- * - 읽는 법: [직접 실행]은 편집기에서 선택, [내부]는 상위 함수가 필요한 인수를 전달해 자동 호출.
- * - 이름 끝 _ 는 내부 함수. 함수 식별자는 유지하므로 기존 트리거·호출 연결은 그대로 사용.
- * - 아래 번호는 안내 제목이며 실제 함수 이름 앞에 숫자를 입력하지 않는다.
+ * 12. 슬랙키워드 — Slack 업무 분류 키워드(BOT_KEYWORD_RULES 탭)
  *
- * 12-01. 키워드 행 검증 [내부]
- * - validateSlackKeywordRows_(rows): 규칙 유형·우선순위·활성 체크박스와 검색 표현을 검사한다.
+ * 알아둘 것
+ * - BOT_KEYWORD_RULES 탭이 없으면 코드 기본 규칙을 쓴다.
  *
- * 12-02. 키워드 규칙 읽기 [내부]
- * - getSlackKeywordRules_(): BOT_KEYWORD_RULES를 읽고 탭이 없으면 기본 규칙을 사용하며 실행 중 재사용한다.
- *
- * 12-03. 정리된 본문 검색 [내부]
- * - slackKeywordMatchesNormalized_(plain, compact, keyword): 정규화된 본문과 키워드를 경계·공백 규칙으로 비교하고 정규식을 재사용한다.
- *
- * 12-04. 단일 키워드 검색 [내부]
- * - slackKeywordMatches_(text, keyword): 본문을 정규화해 키워드 일치 여부를 확인한다.
- *
- * 12-05. 유형별 키워드 찾기 [내부]
- * - findSlackKeywordHits_(text, type): 활성 규칙 중 해당 유형에 맞는 키워드를 우선순위대로 찾는다.
+ * 내부 함수 (직접 실행하지 않음)
+ * - validateSlackKeywordRows_(rows): 규칙 유형·우선순위·활성 체크박스와 검색 표현을 검사한다
+ * - getSlackKeywordRules_(): BOT_KEYWORD_RULES를 읽고 탭이 없으면 기본 규칙을 사용하며 실행 중 재사용한다
+ * - slackKeywordMatchesNormalized_(plain, compact, keyword): 정규화된 본문과 키워드를 경계·공백 규칙으로 비교하고 정규식을 재사용한다
+ * - slackKeywordMatches_(text, keyword): 본문을 정규화해 키워드 일치 여부를 확인한다
+ * - findSlackKeywordHits_(text, type): 활성 규칙 중 해당 유형에 맞는 키워드를 우선순위대로 찾는다
  */
 
 /** PM 업무 사전. 검색 범위/담당자/기한을 확장하지 않고 멘션 후보의 분류에만 사용한다. */

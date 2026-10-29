@@ -1,4 +1,12 @@
-/** 연결 앱 원본: 본인 참석 판정·중복 제거(예전에는 중앙 02번에서 복사했으나 10/23 중앙의 해당 코드를 지워 이 파일이 원본). 직접 실행하지 않음. */
+/**
+ * 연결 앱 02. 회의판정 — 본인이 참석·생성한 일정만 고르기
+ *
+ * 알아둘 것
+ * - 공유 캘린더 소유권·이름만으로 참석을 추정하지 않는다.
+ *
+ * 내부 함수 (직접 실행하지 않음)
+ * - collectMyCalendarEvents_(calendar, now, options): 한 캘린더에서 본인이 참석·생성한 일정만 골라 오늘·내일로 나눈다
+ */
 const BRIEFING = {timezone:'Asia/Seoul'};
 
 function collectMyCalendarEvents_(calendar, now, options) {

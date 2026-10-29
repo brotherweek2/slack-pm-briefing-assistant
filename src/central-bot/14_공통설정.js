@@ -1,28 +1,20 @@
 /**
- * 14. 공통설정
- * - 역할: 공통 설정·헤즈업/HUB 수집·Slack API 전송 보조
- * - 읽는 법: [직접 실행]은 편집기에서 선택, [내부]는 상위 함수가 필요한 인수를 전달해 자동 호출.
- * - 이름 끝 _ 는 내부 함수. 함수 식별자는 유지하므로 기존 트리거·호출 연결은 그대로 사용.
- * - 아래 번호는 안내 제목이며 실제 함수 이름 앞에 숫자를 입력하지 않는다.
+ * 14. 공통설정 — 공통 설정값, HUB·헤즈업 읽기, Slack 전송, DM 블록
  *
- * 14-01. HUB 검토 필요 읽기 [내부]
- * - collectHaCvReviewCandidates_(spreadsheet): HACV_Hub 1~3행에서 언어쌍·담당자·전송 여부 머리글을 이름으로 찾아 그 열만 읽고 후보와 근거 링크를 만든다.
+ * 알아둘 것
+ * - appsscript.json은 권한·시간대 설정 파일이라 이름·내용을 그대로 둔다.
+ * - postSlackDm_은 결과가 불확실한 DM을 자동으로 다시 보내지 않는다.
  *
- * 14-02. 헤즈업 대상 읽기 [내부]
- * - collectHaCvHeadsUpCandidates_(spreadsheet): 결과 집계 1~3행에서 언어쌍·담당 PM·헤즈업 상태 머리글을 이름으로 찾아 그 열만 읽고 후보와 근거 링크를 만든다.
- * - findSourceHeader_(sheet, maxRow, names, label): 머리글 줄·열 위치를 이름으로 찾는다. 못 찾으면 필요한 이름을 알려 주며 멈춘다.
- *
- * 14-03. Slack DM API [내부]
- * - buildBriefingBlocks_(text): 개인 브리핑을 영역별 구분선·회색 기준 줄 블록으로 변환(50개 초과 시 null). briefingBlocksAsText_는 미리보기 로그용.
- * - postSlackDm_(token, userId, text, deliveryKey, blocks): 개인 DM 전송·길이 확인. blocks는 선택(개인 브리핑만 사용). deliveryKey가 있으면 요청 전 점유를 기록하고 결과 불명 시 재전송을 차단한다. 호출자는 발송 잠금을 확보해야 한다. 영향: 실제 Slack 발송·발송 점유 속성 변경.
- *
- * 14-04. 필수 속성 확인 [내부]
- * - requiredProperty_(props, key): 필수 속성 확인. 봇 파일 ID 요청 시 지정 전용 파일·실행 계정도 검사한다.
- *
- * 14-05. Slack 문자 처리 [내부]
- * - escapeSlack_(value): 문안의 특수 문자를 안전하게 표시한다.
- *
- * - appsscript.json: 권한·시간대·V8 실행 환경 설정. 예약된 JSON 파일이므로 이름·내용 유지.
+ * 내부 함수 (직접 실행하지 않음)
+ * - collectHaCvReviewCandidates_(spreadsheet): HACV_Hub 1~3행에서 언어쌍·담당자·전송 여부 머리글을 이름으로 찾아 그 열만 읽고 후보와 근거 링크를 만든다
+ * - findSourceHeader_(sheet, maxRow, names, label): 머리글 줄·열 위치를 이름으로 찾는다
+ * - collectHaCvHeadsUpCandidates_(spreadsheet): 결과 집계 1~3행에서 언어쌍·담당 PM·헤즈업 상태 머리글을 이름으로 찾아 그 열만 읽고 후보와 근거 링크를 만든다
+ * - buildBriefingBlocks_(text): 개인 브리핑을 영역별 구분선·회색 기준 줄 블록으로 변환(50개 초과 시 null)
+ * - briefingSection_(text): Slack 문단 블록 1개(3,000자 상한)
+ * - briefingBlocksAsText_(blocks): 미리보기 로그용: 블록 구조를 구분선 줄로 보여준다(Slack 화면 모양 확인용)
+ * - postSlackDm_(token, userId, text, deliveryKey, blocks): Slack DM 전송(중복 방지 기록·요청 제한 대기·길이 확인)
+ * - requiredProperty_(props, key): 필수 스크립트 속성 확인(봇 시트 주소·실행 계정 검사 포함)
+ * - escapeSlack_(value): 문안의 특수 문자를 안전하게 표시한다
  */
 
 /**

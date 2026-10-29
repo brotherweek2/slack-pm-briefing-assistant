@@ -1,17 +1,27 @@
 /**
- * 01. 개인 회의 연결 — 중앙 봇과 별도 Apps Script 프로젝트에 배포한다.
- * - doGet: 연결 화면. 접속 사용자로 실행하는 웹 앱만 사용. 방문만으로 연결하지 않는다.
- * - getConnectionStatus: 본인 연결·최근 갱신 상태 조회. 저장/DM 없음.
- * - connectCalendar: 본인 동의 후 수집·중앙 등록·트리거 설치·초대된 본인 Slack 연결 완료 요청.
- *   중앙이 초대한 수신자만 개인 발송 활성화/완료 DM. 이 앱에는 Slack 토큰 없음.
- * - refreshCalendar: 연결된 본인 회의 즉시 갱신. DM 없음.
- * - disconnectCalendar: 본인 트리거 중지·중앙 회의 삭제 요청. 실패 시 재시도 안내.
- * - syncMyMeetings: 본인 설치 트리거. 평일 09:45~10:45·13:30~14:15·16:00~17:15에만 갱신한다.
- * - connectorStaggerMs_: 사용자별 자동 수집 시작을 0~30초 분산. 수동 갱신에는 미적용.
- * - connectorSend_: 저장 BUSY/HTTP 429만 제한적으로 재시도. 승인 오류는 재시도하지 않는다.
- * - 03번 수집부: 개인·Schedule·Review & Delivery·휴일을 각각 읽는다. Tasks 조회 없음.
- * - 나머지 _ 함수: 계정 검증·수집·서명 전송·잠금 내부 처리.
- * - Google 토큰 저장 없음. 중앙 Slack 토큰·시트 권한을 이 프로젝트에 넣지 않는다.
+ * 연결 앱 01. 개인회의연결 — 연결 화면·버튼, PM 본인 자동 갱신
+ *
+ * 알아둘 것
+ * - 중앙 봇과 별도 프로젝트. Google 토큰을 저장하지 않고, Slack 토큰·시트 권한도 두지 않는다.
+ * - 자동 갱신은 평일 09:45~10:45·13:30~14:15·16:00~17:15에만 한다.
+ *
+ * 직접 실행 (🔍 조회만 · ⚠️ 보내거나 바꿈 · ⏰ 자동 호출)
+ * - ⏰ doGet(): PM이 링크로 여는 연결 화면을 띄운다
+ * - 🔍 getConnectionStatus(): 본인 연결·최근 갱신 상태 조회
+ * - ⚠️ connectCalendar(): 본인 동의 후 수집·중앙 등록·트리거 설치·초대된 본인 Slack 연결 완료 요청
+ * - ⚠️ refreshCalendar(): "지금 갱신" 버튼: 본인 회의를 바로 중앙 봇에 보낸다
+ * - ⚠️ disconnectCalendar(): 본인 트리거 중지·중앙 회의 삭제 요청
+ * - ⏰ syncMyMeetings(event): 평일 회차 직전 5분마다 본인 회의를 중앙 봇에 보낸다(PM 계정 트리거)
+ *
+ * 내부 함수 (직접 실행하지 않음)
+ * - connectorStaggerMs_(email): 사용자별 자동 수집 시작을 0~30초 분산
+ * - connectorSync_(origin): 본인 일정을 모아 중앙 봇으로 서명해 보낸다(계정 일치 확인)
+ * - connectorActivate_(): 회의 수집/사용자 트리거가 준비된 뒤에만 호출한다
+ * - connectorAccount_(interactive): 실행 계정이 회사 도메인 계정인지 확인한다
+ * - connectorSnapshot_(email, now): 캘린더 4개 수집 결과를 묶는다
+ * - connectorSend_(action, email, connectionId, snapshot, origin): 저장 BUSY/HTTP 429만 제한적으로 재시도
+ * - connectorTriggers_(): 본인 자동 갱신 트리거 목록
+ * - connectorLocked_(work): 본인 연결 작업이 동시에 돌지 않게 잠근다
  */
 function doGet() {
   return HtmlService.createHtmlOutputFromFile('Connect').setTitle('개인 일정 연결');

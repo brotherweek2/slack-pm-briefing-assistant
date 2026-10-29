@@ -1,10 +1,13 @@
 /**
- * 03. 캘린더 네 원천 수집 (읽기 전용, 직접 실행 없음)
- * - connectorCollectSources_: 각 원천을 따로 읽고 성공/실패 상태와 최소 필드만 반환.
- * - connectorResolveCalendar_: 관리자 고정 ID 우선, 없으면 정확한 이름으로 유일 항목만 선택.
- * - connectorReadCalendar_: 개인 일정·공유 본인 초대/생성 일정만. 참석자 없는 팀 공통 일정 제외.
- *   대한민국 휴일만 별도 포함. 불참 제외.
- * - API 권한 미승인·미구독·동명 중복은 sources 상태로 표시, 다른 원천 성공 결과는 보존.
+ * 연결 앱 03. 일정과할일수집 — 캘린더 4개(개인·Schedule·Review & Delivery·휴일) 읽기
+ *
+ * 알아둘 것
+ * - Google Tasks는 읽지 않는다.
+ *
+ * 내부 함수 (직접 실행하지 않음)
+ * - connectorCollectSources_(email, now): 각 원천을 따로 읽고 성공/실패 상태와 최소 필드만 반환
+ * - connectorResolveCalendar_(spec): 관리자 고정 ID 우선, 없으면 정확한 이름으로 유일 항목만 선택
+ * - connectorReadCalendar_(calendar, source, email, now): 개인 일정·공유 본인 초대/생성 일정만
  */
 function connectorCollectSources_(email, now) {
   const day = Utilities.formatDate(now,'Asia/Seoul','yyyy-MM-dd');

@@ -1,56 +1,31 @@
 /**
- * 06. 검수와어뷰저
- * - 역할: PM 담당 일정·직접 검수·테스트·어뷰저 업무 수집
- * - 읽는 법: [직접 실행]은 편집기에서 선택, [내부]는 상위 함수가 필요한 인수를 전달해 자동 호출.
- * - 이름 끝 _ 는 내부 함수. 함수 식별자는 유지하므로 기존 트리거·호출 연결은 그대로 사용.
- * - 아래 번호는 안내 제목이며 실제 함수 이름 앞에 숫자를 입력하지 않는다.
+ * 06. 검수와어뷰저 — 담당 탭(종료 임박·어뷰저), PM Review 1차 검수, 테스트지 검토 읽기
  *
- * 06-01. PM 담당 탭 읽기 [내부]
- * - collectHaCvPmDashboards_(source): 유효한 PM 탭의 프로젝트·목표 종료일을 읽는다. 예전 양식(H4:H6)과 새 양식(1행 "언어쌍 관리") 모두 읽는다.
- * - collectPmTabProjects_(sheet, day): 새 양식 담당 탭 전체 열의 "프로젝트 번호 · 목표 종료일 · 수량 · 최대 N배치" 칸을 레코드로 만든다. 지난 종료일은 종료로 본다.
+ * 알아둘 것
+ * - 원본은 한 번에 5만 칸 미만으로 나눠 읽는다. 테스트지·PM Review 머리글은 이름으로 찾는다.
+ * - 담당 탭 목표 종료일은 연도가 없어 오늘에서 가장 가까운 해로 추정한다.
  *
- * 06-02. 대안 일정 자료 읽기 [내부]
- * - collectHaCvPpDashboards_(source): 진단용 HACV_PP 헤더와 날짜·담당자를 읽는다. 현재 일일 발송 기준을 대체하지 않는다.
+ * 직접 실행 (🔍 조회만 · ⚠️ 보내거나 바꿈 · ⏰ 자동 호출)
+ * - 🔍 compareHaCvDeadlineSources(): 담당 탭과 진단용 대안 일정의 차이를 읽기 전용으로 비교한다
  *
- * 06-03. 누락 헤더 설명 [내부]
- * - describeMissingHaCvPpHeader_(display): 대안 일정 자료에 필요한 헤더가 없을 때 진단 문구를 만든다.
- *
- * 06-04. 헤더 이름 정리 [내부]
- * - normalizeHaCvPpLabel_(value): 대안 일정 헤더의 공백·표기 차이를 정리한다.
- *
- * 06-05. 대안 일정 열 찾기 [내부]
- * - findHaCvPpColumns_(row): 헤더 이름으로 프로젝트·언어쌍·상태·일정·담당 열을 찾는다.
- *
- * 06-06. 대안 종료 후보 [내부]
- * - buildHaCvPpUpcomingTasks_(pm, records, day, sourceUrl, gid, now): 진단용 대안 자료의 종료 임박 후보를 만든다.
- *
- * 06-07. 대안 어뷰저 후보 [내부]
- * - buildHaCvPpAbuseTasks_(pm, records, day, sourceUrl, gid, now): 진단용 대안 자료에서 종료 당일·다음날 어뷰저 후보를 만든다.
- *
- * 06-08. 대안 일정 묶기 [내부]
- * - groupHaCvPpRecords_(records): 같은 업무의 배치별 레코드를 묶는다.
- *
- * 06-09. 일정 자료 비교 [직접 실행]
- * - 함수: compareHaCvDeadlineSources()
- * - 기능: 담당 탭과 진단용 대안 일정의 차이를 읽기 전용으로 비교한다.
- * - 사용: 담당 탭과 대안 일정 자료의 차이를 진단할 때 실행.
- * - 영향: 시트 읽기만. DM·시트 변경 없음.
- *
- * 06-10. 어뷰저 관리 후보 [내부]
- * - buildHaCvAbuseTasks_(pm, records, day, sourceUrl, gid, now): 목표 종료 당일과 다음날 알림 후보를 만들고 작성 기한을 종료 다음날로 둔다.
- *
- * 06-11. 어뷰저 알림일 확인 [내부]
- * - isHaCvAbuseReminderDay_(target, day): 현재 날짜가 목표 종료 당일 또는 다음날인지 확인한다.
- *
- * 06-12. 검수 담당자 정리 [내부]
- * - normalizeReviewPm_(value): 검수 담당자 표기를 정리한다.
- *
- * 06-13. PM 1차 검수 후보 [내부]
- * - readDisplayRowsInChunks_(sheet, firstRow, height, width): 원본을 한 번에 5만 칸 미만으로 나눠 읽는다(담당 탭·PM Review).
- * - collectPmReviewTasks_(source, day, now): 검수 Agent 완료·1차 검수중 상태의 담당자·파일·프로젝트·기한을 읽는다.
- *
- * 06-14. 테스트지 검토 후보 [내부]
- * - collectTestReviewTasks_(source, now): 생성 완료·검토 중인 테스트의 담당자와 검토 기한을 읽는다.
+ * 내부 함수 (직접 실행하지 않음)
+ * - collectHaCvPmDashboards_(source): 유효한 PM 탭의 프로젝트·목표 종료일을 읽는다
+ * - collectPmTabProjects_(sheet, day): 새 양식 담당 탭 전체 열의 "프로젝트 번호 · 목표 종료일 · 수량 · 최대 N배치" 칸을 레코드로 만든다
+ * - nearestIsoDate_(month, date, day): 월/일만 있는 날짜를 오늘에서 가장 가까운 해의 ISO 날짜로 바꾼다(연말·연초 경계용)
+ * - collectHaCvPpDashboards_(source): 진단용 HACV_PP 헤더와 날짜·담당자를 읽는다
+ * - describeMissingHaCvPpHeader_(display): 대안 일정 자료에 필요한 헤더가 없을 때 진단 문구를 만든다
+ * - normalizeHaCvPpLabel_(value): 대안 일정 헤더의 공백·표기 차이를 정리한다
+ * - findHaCvPpColumns_(row): 헤더 이름으로 프로젝트·언어쌍·상태·일정·담당 열을 찾는다
+ * - buildHaCvPpUpcomingTasks_(pm, records, day, sourceUrl, gid, now): 진단용 대안 자료의 종료 임박 후보를 만든다
+ * - buildHaCvPpAbuseTasks_(pm, records, day, sourceUrl, gid, now): 진단용 대안 자료에서 종료 당일·다음날 어뷰저 후보를 만든다
+ * - groupHaCvPpRecords_(records): 같은 업무의 배치별 레코드를 묶는다
+ * - buildHaCvAbuseTasks_(pm, records, day, sourceUrl, gid, now): 목표 종료 당일과 다음날 알림 후보를 만들고 작성 기한을 종료 다음날로 둔다
+ * - isHaCvAbuseReminderDay_(target, day): 현재 날짜가 목표 종료 당일 또는 다음날인지 확인한다
+ * - normalizeReviewPm_(value): 검수 담당자 표기를 정리한다
+ * - readDisplayRowsInChunks_(sheet, firstRow, height, width): 원본을 한 번에 5만 칸 미만으로 나눠 읽는다(담당 탭·PM Review)
+ * - collectPmReviewTasks_(source, day, now): 검수 Agent 완료·1차 검수중 상태의 담당자·파일·프로젝트·기한을 읽는다
+ * - collectTestReviewTasks_(source, now): 생성 완료·검토 중인 테스트의 담당자와 검토 기한을 읽는다
+ * - uniqueTaskKeys_(rows): 같은 업무 키가 두 번 나오면(같은 프로젝트·언어쌍 행이 둘) 뒤의 것에 행 번호를 붙여 BOT_TASKS 키 중복을 막는다
  */
 
 /** Active PM tabs are discovered from the current source structure, not a name list. */

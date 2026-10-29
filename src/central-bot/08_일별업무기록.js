@@ -1,24 +1,15 @@
 /**
- * 08. 일별업무기록
- * - 역할: 헤즈업·검토 대상의 날짜별 조회 기록과 변화 표시
- * - 읽는 법: [직접 실행]은 편집기에서 선택, [내부]는 상위 함수가 필요한 인수를 전달해 자동 호출.
- * - 이름 끝 _ 는 내부 함수. 함수 식별자는 유지하므로 기존 트리거·호출 연결은 그대로 사용.
- * - 아래 번호는 안내 제목이며 실제 함수 이름 앞에 숫자를 입력하지 않는다.
+ * 08. 일별업무기록 — 날짜별 업무 기록(90일 보관)
  *
- * 08-01. 오늘 조회 기록 저장 [내부]
- * - saveHaCvDailyHistory_(bot, taskRows, day, scannedAt): 같은 날짜 기록 교체·최근 90일 보관. 이전 날짜와 비교한 변화·잔류를 반환한다. 영향: BOT_DAILY_HISTORY 자동 생성 이력 정리.
+ * 알아둘 것
+ * - BOT_DAILY_HISTORY에 날짜별로 남긴다. 같은 날은 교체하고 90일만 보관한다.
  *
- * 08-02. 일별 기록 행 생성 [내부]
- * - buildHaCvHistoryRows_(taskRows, day, scannedAt): 헤즈업·HUB 업무에서 근거 행별 기록과 집계를 만든다.
- *
- * 08-03. 전일·잔류 비교 [내부]
- * - calculateHaCvDailyTrends_(oldRows, todayRows, day): 전날 대비 증감과 같은 원천 행의 연속 잔류를 계산한다.
- *
- * 08-04. 기록 날짜 정리 [내부]
- * - haCvHistoryDay_(value): 이력의 날짜 값을 ISO 날짜로 통일한다.
- *
- * 08-05. 변화 안내 문안 [내부]
- * - formatHaCvDailyTrend_(trend): 실제 비교 가능한 증감·잔류만 짧게 표시한다.
+ * 내부 함수 (직접 실행하지 않음)
+ * - saveHaCvDailyHistory_(bot, taskRows, day, scannedAt): 같은 날짜 기록 교체·최근 90일 보관
+ * - buildHaCvHistoryRows_(taskRows, day, scannedAt): 헤즈업·HUB 업무에서 근거 행별 기록과 집계를 만든다
+ * - calculateHaCvDailyTrends_(oldRows, todayRows, day): 전날 대비 증감과 같은 원천 행의 연속 잔류를 계산한다
+ * - haCvHistoryDay_(value): 이력의 날짜 값을 ISO 날짜로 통일한다
+ * - formatHaCvDailyTrend_(trend): 실제 비교 가능한 증감·잔류만 짧게 표시한다
  */
 
 /**

@@ -1,17 +1,23 @@
 /**
- * 23. 운영 알림 — 관리자(본인, PILOT_PM_NAME)에게 정기 회차 상태를 한 번 요약해 보낸다.
- * - previewAdminRoundSummary(): [직접 실행] 지금 상태로 요약 문안만 로그에 출력. Slack 발송·저장 없음.
- * - cleanupBotStorage(): [직접 실행] BOT_USERS에서 빠진 PM의 Slack 발송 이력·한마디·점심 기록을 지운다. DM 없음.
- * - notifyAdminRoundSummary_(slot, info): 회차 끝(완료·일부 실패·중지)이나 시작 실패 때 자동 호출.
- *   같은 날짜·회차에는 한 번만 보낸다. 실패해도 정기 발송 결과에는 영향을 주지 않는다.
- * - buildAdminRoundSummary_: 발송 결과·확인 필요 PM과 원인·연차로 건너뛴 PM·직전 회차 누락·Slack 기준 시각·일정 갱신 지연 PM·저장 공간을 모은다.
- *   금요일 17:00에는 이번 주 피드백(👍/👎) 집계를 붙인다.
- * - adminPreviousRound_(props, slot, day): 직전 회차(10:30은 직전 근무일 17:00). 그 회차의 발송 기록이 하나도 없으면 경고한다.
- * - adminWeeklyFeedbackLine_(bot, day): BOT_FEEDBACK에서 이번 주(월~오늘) 👍/👎 수와 참여 인원.
- * - adminFailureHint_(message): 오류 문구 → 사용자가 할 일 한 줄.
- * - cleanupBotProperties_(props, rows): 17:00 요약 뒤 자동 실행. 명단에 없는 Slack ID의 기록만 지운다.
- * - 한계: 트리거 자체가 권한 만료로 시작하지 못하면 이 코드도 실행되지 않는다. 한 회차만 빠졌으면 다음 회차 요약의
- *   "직전 회차 발송 기록 없음"으로, 전부 멈췄으면 Google의 트리거 실패 메일로 확인한다.
+ * 23. 운영알림 — 회차가 끝나면 관리자에게 요약 DM
+ *
+ * 알아둘 것
+ * - 같은 날짜·회차에 한 번만 보낸다. 실패해도 정기 발송 결과에는 영향이 없다.
+ * - 트리거 자체가 멈추면 이 요약도 오지 않는다 → Google의 트리거 실패 메일로 확인한다.
+ *
+ * 직접 실행 (🔍 조회만 · ⚠️ 보내거나 바꿈 · ⏰ 자동 호출)
+ * - 🔍 previewAdminRoundSummary(): 지금 상태로 요약 문안만 로그에 출력
+ * - ⚠️ cleanupBotStorage(): BOT_USERS에서 빠진 PM의 Slack 발송 이력·한마디·점심 기록을 지운다
+ *
+ * 내부 함수 (직접 실행하지 않음)
+ * - adminInfoFromJob_(job): 이어 보내기 기록을 관리자 요약 입력값으로 바꾼다
+ * - notifyAdminRoundSummary_(slot, info): 회차가 끝나면(또는 시작 실패 시) 관리자 요약 DM을 한 번 보낸다
+ * - buildAdminRoundSummary_(props, slot, info, now): 발송 결과·확인 필요 PM과 원인·연차로 건너뛴 PM·직전 회차 누락·Slack 기준 시각·일정 갱신 지연 PM·저장 공간을 모은다
+ * - adminPreviousRound_(props, slot, day): 직전 회차(10:30은 직전 근무일 17:00)
+ * - adminWeeklyFeedbackLine_(bot, day): BOT_FEEDBACK에서 이번 주(월~오늘) 👍/👎 수와 참여 인원
+ * - adminStorageKb_(props): 스크립트 속성 사용량(KB)을 잰다
+ * - adminFailureHint_(message): 오류 문구 → 사용자가 할 일 한 줄
+ * - cleanupBotProperties_(props, rows): 명단에서 빠진 PM의 이력 속성을 지운다(17:00 요약 뒤 자동)
  */
 const ADMIN_SUMMARY = Object.freeze({sentKey:'ADMIN_SUMMARY_SENT', staleMinutes:20, maxNames:5});
 

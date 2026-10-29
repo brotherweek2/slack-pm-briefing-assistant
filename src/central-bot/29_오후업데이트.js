@@ -1,16 +1,18 @@
 /**
- * 29. 회차 이름과 14:00 오후 업데이트 — 점심 직후, 오전(10:30) 이후 새로 생긴 것만 짧게 알린다.
- * - SLOT_TIME / briefingSlotLabel_(slot): 내부 회차 이름('11:00'·'14:00'·'17:00') → 실제 시각·표시 이름. 모든 화면 문구는 이것을 쓴다.
- * - currentBriefingSlot_(now): 지금 시각에 해당하는 회차(미리보기·수동 점검용). 12시 전 오전, 16시 전 오후, 그 뒤 마무리.
- * - 새 업무: 오늘 오전 정기 DM에 실려 간 업무(BOT_SEND_LOG의 업무 키)에 없던 업무. 오전 발송 기록이 없으면 업무는 비교하지 않는다.
- * - 새 Slack: 아직 보낸 적 없는 새·변경 항목만(이미 안내한 오늘 요청은 다시 싣지 않음).
- * - 오늘 남은 회의: 캘린더가 켜져 있으면 새 소식 유무와 상관없이 붙인다(10/28 사용자 요청).
- * - 업무·Slack 둘 다 없으면 "오전 이후 새로운 알림이 없습니다. 점심 맛있게 드셨나요?" 한 줄(+ 회의). Slack을 읽지 못했으면 그 사실을 알린다.
- * - 점심 추천·한마디·날씨는 싣지 않는다.
- * - morningTaskKeys_(prior, day, pm): 오늘 오전 정기 DM 기록의 업무 키 목록(없으면 null).
- * - formatAfternoonUpdate_(pm, day, newRows, freshSlack, slackFailure, basis, calendarSection): 14:00 문안. {text, quiet}.
- *   quiet는 업무·Slack 새 소식이 없다는 뜻(회의가 붙어도 quiet).
- * - previewMyAfternoonBriefing(): [직접 실행] 지금 자료로 14:00 문안을 로그로 본다. 발송·저장 없음.
+ * 29. 오후업데이트 — 14:00 오후 업데이트(새 업무·새 Slack·남은 회의)
+ *
+ * 알아둘 것
+ * - 새 업무 = 오늘 오전 정기 DM에 없던 업무(오전 기록이 없으면 비교하지 않음).
+ * - 새 소식이 없으면 한 줄 인사 + 남은 회의. 점심·한마디·날씨는 싣지 않는다.
+ *
+ * 직접 실행 (🔍 조회만 · ⚠️ 보내거나 바꿈 · ⏰ 자동 호출)
+ * - 🔍 previewMyAfternoonBriefing(): 지금 자료로 14:00 문안을 로그로 본다
+ *
+ * 내부 함수 (직접 실행하지 않음)
+ * - briefingSlotLabel_(slot): 내부 회차 이름('11:00'·'14:00'·'17:00') → 실제 시각·표시 이름
+ * - currentBriefingSlot_(now): 지금 시각에 해당하는 회차(미리보기·수동 점검용)
+ * - morningTaskKeys_(prior, day, pm): 오늘 오전 정기 DM 기록의 업무 키 목록(없으면 null)
+ * - formatAfternoonUpdate_(pm, day, newRows, freshSlack, slackFailure, basis, calendarSection): 14:00 오후 업데이트 문안(새 업무·남은 회의·새 Slack)
  */
 const SLOT_TIME = Object.freeze({'11:00':'10:30', '14:00':'14:00', '17:00':'17:00'}); // 내부 회차 이름 → 실제 실행 시각
 

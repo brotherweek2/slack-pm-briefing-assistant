@@ -1,10 +1,16 @@
 /**
- * 27. 설정 반영 — 스크립트 속성이 50개를 넘어 편집기 "프로젝트 설정"에서 수정할 수 없을 때 쓰는 우회 경로.
- * - applyBotSettings(): [직접 실행] 봇 시트 BOT_SETTINGS 탭의 A열 이름·B열 값을 스크립트 속성에 반영한다.
- *   허용한 이름만 받는다. 토큰처럼 민감한 값은 반영 직후 시트에서 지운다. 탭이 없으면 빈 양식을 만든다.
- *   B열을 비우면 그 설정은 건드리지 않는다. 값에 '삭제'를 적으면 그 속성을 지운다.
- * - previewBotSettings(): [직접 실행] 허용 설정의 현재 값을 로그로 본다(민감한 값은 있음/없음만). 변경 없음.
- * - 영향: 봇 전용 시트의 BOT_SETTINGS 탭과 스크립트 속성만. DM·원천 시트·트리거 변경 없음.
+ * 27. 설정반영 — BOT_SETTINGS 탭으로 스크립트 속성 바꾸기(토큰 포함)
+ *
+ * 알아둘 것
+ * - 허용한 이름만 받는다. 민감한 값은 반영 직후 시트에서 지운다. '삭제'를 적으면 그 속성을 지운다(봇 토큰은 제외).
+ *
+ * 직접 실행 (🔍 조회만 · ⚠️ 보내거나 바꿈 · ⏰ 자동 호출)
+ * - ⚠️ applyBotSettings(): 봇 시트 BOT_SETTINGS 탭의 A열 이름·B열 값을 스크립트 속성에 반영한다
+ * - 🔍 previewBotSettings(): 허용 설정의 현재 값을 로그로 본다(민감한 값은 있음/없음만)
+ *
+ * 내부 함수 (직접 실행하지 않음)
+ * - botSettingsSheet_(props, create): BOT_SETTINGS 탭을 연다(없으면 양식 생성)
+ * - refreshBotSettingsNotes_(sheet): 기존 탭의 C열 설명을 최신 문구로 맞추고, 새로 생긴 허용 설정은 빈 줄로 추가한다(B열 값은 건드리지 않음)
  */
 const BOT_SETTINGS = Object.freeze({tab:'BOT_SETTINGS', headers:['setting', 'value', 'note'],
   allowed:{

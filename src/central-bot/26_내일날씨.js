@@ -1,9 +1,14 @@
 /**
- * 26. 내일 날씨 — 17:00 DM에 내일 날씨 한 줄. ENABLE_WEATHER=true일 때만(기본 꺼짐).
- * - 출처: Open-Meteo 무료 예보 API(키 없음). 이용 조건이 "비상업적 무료"이므로 회사 사용 가능 여부를 확인한 뒤 켠다.
- * - 위치: 스크립트 속성 WEATHER_LAT·WEATHER_LON(없으면 서울 시청 좌표). 이름 표시는 WEATHER_PLACE(없으면 '서울').
- * - formatTomorrowWeather_(props, day, slot): 17:00만. 하루 한 번 조회해 속성에 저장하고 같은 날은 재사용. 실패하면 빈 문자열(DM은 그대로).
- * - weatherCodeLabel_(code): WMO 날씨 코드 → 이모지·한국어.
+ * 26. 내일날씨 — 17:00 내일 날씨 한 줄
+ *
+ * 알아둘 것
+ * - ENABLE_WEATHER=true일 때만(기본 꺼짐). Open-Meteo 무료 API(비상업 조건 확인 후 사용).
+ * - 위치는 WEATHER_LAT·WEATHER_LON·WEATHER_PLACE(없으면 서울).
+ *
+ * 내부 함수 (직접 실행하지 않음)
+ * - weatherCodeLabel_(code): WMO 날씨 코드 → 이모지·한국어
+ * - formatTomorrowWeather_(props, day, slot): 17:00 DM의 내일 날씨 한 줄(하루 1번 조회, 실패하면 생략)
+ * - formatEveningNotes_(props, day, slot): 17:00 끝부분: 내일 날씨와 주말 인사를 구분선 없이 한 영역으로 묶는다(둘 다 없으면 빈 문자열)
  */
 const WEATHER = Object.freeze({cacheKey:'WEATHER_TOMORROW', lat:37.5665, lon:126.9780, place:'서울'});
 
