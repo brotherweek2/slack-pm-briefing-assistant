@@ -134,6 +134,19 @@ assert.equal(testTasks[0][7], '2026-10-10', 'E is the review deadline');
 assert.equal(testTasks[1][7], '2026-10-09');
 assert.match(testTasks[0][6], /F열을 검토 완료로 변경/);
 assert.match(testTasks[0][10], /gid=800&range=H2/);
+// 운영본 새 탭명과 기존 사본 탭명을 모두 지원하되, 모호한 탭·잘못된 파일·헤더는 중지한다.
+const currentTestSource = {getSheetByName:name => name === 'HT 테스트지 제작 관리' ? testSheet : null,
+  getUrl:testSource.getUrl};
+const currentTestTasks = collectTest(currentTestSource, now);
+assert.equal(currentTestTasks.length, testTasks.length);
+assert.equal(currentTestTasks[0][9], 'HT 테스트지 제작 관리');
+assert.equal(testTasks[0][9], 'HT 테스트지 제작 관리(ing)');
+assert.equal(currentTestTasks.map(row => row[0]).join(','), testTasks.map(row => row[0]).join(','));
+assert.equal(currentTestTasks[0][10], testTasks[0][10], 'tab rename does not change the task link target');
+assert.throws(() => collectTest({getSheetByName:() => null}, now), /연결 파일과 탭 이름/);
+assert.throws(() => collectTest({getSheetByName:() => testSheet}, now), /대상 탭이 2개/);
+assert.throws(() => collectTest({getSheetByName:name => name === 'HT 테스트지 제작 관리' ?
+  {...testSheet, getRange:() => ({getDisplayValues:() => [Array(8).fill('')]})} : null}, now), /헤더가 예상과 다릅니다/);
 // 새 양식 담당 탭(10/27~): 줄 전체에서 "프로젝트 · 목표 종료일 · 수량 · 최대 N배치", 다음 줄에 언어쌍 블록 머리글.
 // 지난 목표 종료일은 종료, 오늘~7일 안은 종료 임박, 오늘·어제 종료는 어뷰저 관리.
 {
