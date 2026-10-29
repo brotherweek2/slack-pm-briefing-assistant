@@ -1,0 +1,9 @@
+.clasprc.json
+.clasp.json
+**/.clasprc.json
+**/.clasp.json
+apps-script-deploy/
+node_modules/
+.env
+.env.*
+*.credentials.json

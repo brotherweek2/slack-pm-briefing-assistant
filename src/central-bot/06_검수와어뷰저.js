@@ -403,14 +403,8 @@ function collectPmReviewTasks_(source, day, now) {
 }
 
 function collectTestReviewTasks_(source, now) {
-  // 운영본은 (ing)가 없고 기존 사본은 (ing)가 있다. 확인된 두 이름만 허용한다.
-  // 둘 다 있으면 활성 탭을 임의 선택하지 않는다. 다른 파일 연결을 0건으로 숨기지 않는다.
-  const candidates = ['HT 테스트지 제작 관리', 'HT 테스트지 제작 관리(ing)']
-    .map(name => ({name, sheet:source.getSheetByName(name)})).filter(item => item.sheet);
-  if (candidates.length !== 1) throw new Error(candidates.length ?
-    '테스트지 관리 대상 탭이 2개입니다. 활성 탭을 확인하세요. 자동 선택·발송 없음.' :
-    '테스트 관리 연결 파일에 HT 테스트지 제작 관리 또는 HT 테스트지 제작 관리(ing) 탭이 없습니다. 연결 파일과 탭 이름을 확인하세요.');
-  const {name:tabName, sheet} = candidates[0];
+  const sheet = source.getSheetByName('HT 테스트지 제작 관리(ing)');
+  if (!sheet) throw new Error('HT 테스트지 제작 관리(ing) 탭이 없습니다.');
   const header = sheet.getRange(1, 1, 1, 8).getDisplayValues()[0];
   if (header[0].trim() !== 'Language Pair' || header[4].trim() !== '검토 완료일' ||
       header[5].trim() !== 'Status' || header[7].trim() !== '검토 PM') {
@@ -437,7 +431,7 @@ function collectTestReviewTasks_(source, now) {
       '테스트지 검토 후 F열을 검토 완료로 변경',
       due, // E열은 완료 기록이 아니라 검토 완료 기한이다.
       '',
-      tabName,
+      'HT 테스트지 제작 관리(ing)',
       source.getUrl() + '#gid=' + sheet.getSheetId() + '&range=H' + rowNumber,
       String(rowNumber),
       true,

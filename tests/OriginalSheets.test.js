@@ -1,0 +1,149 @@
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const vm = require('node:vm');
+
+// 합성 자료만 사용. 원본 시트 연결: 미리보기는 읽기만, 전환·되돌리기는 속성만 바꾸고 업무 시트에는 아무것도 쓰지 않는다.
+const COPY = 'copy_hacv_0000000000000000000000', ORIG = 'orig_hacv_0000000000000000000000';
+const ORIG_PM = 'orig_pmreview_00000000000000000000';
+function fixture(extra) {
+  const values = new Map(Object.entries(Object.assign({SOURCE_SPREADSHEET_ID: COPY, BOT_SPREADSHEET_ID: 'bot_sheet_000000000000000000000'}, extra || {})));
+  const props = {getProperty: k => values.has(k) ? values.get(k) : null, setProperty: (k, v) => values.set(k, String(v)),
+    deleteProperty: k => values.delete(k)};
+  const opened = [], logs = [];
+  // 업무 시트 흉내: 읽기 함수만 있고, 쓰기 함수를 부르면 바로 실패한다.
+  const sheet = id => new Proxy({id}, {get: (target, name) => {
+    if (/^(set|insert|delete|clear|append|copy|remove|add)/.test(String(name))) throw new Error('write attempted on ' + id + ': ' + String(name));
+    if (name === 'getName') return () => 'name:' + id.split('_')[0];
+    if (name === 'getUrl') return () => 'https://docs.google.com/spreadsheets/d/' + id;
+    return target[name];
+  }});
+  const ctx = vm.createContext({
+    console: {log: m => logs.push(m)}, BRIEFING: {timezone: 'Asia/Seoul', hubTab: 'HACV_Hub', resultTab: 'HA-CV 헤즈업 결과 집계'},
+    PropertiesService: {getScriptProperties: () => props},
+    Utilities: {formatDate: () => '2026-10-27'},
+    SpreadsheetApp: {openById: id => { if (/^missing/.test(id)) throw new Error('no access'); opened.push(id); return sheet(id); }},
+    // 업무 수집은 시트 ID에 따라 다른 건수를 낸다(원본이 1건 더 많음).
+    collectHaCvReviewCandidates_: s => ({byPm: {}, unassigned: [], id: s.id}),
+    collectHaCvHeadsUpCandidates_: () => ({byPm: {}, unassigned: []}),
+    buildHaCvBotTasks_: () => [], buildHaCvHeadsUpTasks_: () => [],
+    collectHaCvPmDashboards_: s => /^orig/.test(s.id) ? [{pm: 'PM A', records: [], gid: 1}, {pm: 'PM D', records: [], gid: 2}] : [{pm: 'PM A', records: [], gid: 1}],
+    buildHaCvAbuseTasks_: () => [],
+    collectPmReviewTasks_: s => [['PM_REVIEW|x', 'PM A']].concat(/^orig/.test(s.id) ? [['PM_REVIEW|y', 'PM D']] : []),
+    collectTestReviewTasks_: () => [],
+  });
+  vm.runInContext(fs.readFileSync('src/central-bot/05_업무시트연결.js', 'utf8'), ctx);
+  ctx.buildHaCvUpcomingTasks_ = () => [];
+  return {ctx, values, opened, logs};
+}
+
+// 1) 원본 칸이 비어 있으면 아무것도 하지 않는다. 주소 형식이 틀리면 멈춘다. 봇 시트와 같으면 멈춘다.
+let f = fixture();
+assert.throws(() => f.ctx.previewOriginalSheetConnection(), /원본 시트 주소를 먼저/);
+f = fixture({ORIGINAL_HACV_SPREADSHEET_ID: 'not a sheet'});
+assert.throws(() => f.ctx.previewOriginalSheetConnection(), /형식이 아닙니다/);
+assert.throws(() => f.ctx.previewOriginalSheetConnection(), /\(값 11자, 주소 아님\)/);
+assert.equal(f.ctx.sheetIdFromValue_('https://docs.google.com/spreadsheets/u/0/d/' + ORIG + '/edit'), ORIG);
+assert.equal(f.ctx.sheetIdFromValue_('https://drive.google.com/open?id=' + ORIG), ORIG);
+f = fixture({ORIGINAL_HACV_SPREADSHEET_ID: 'bot_sheet_000000000000000000000'});
+assert.throws(() => f.ctx.previewOriginalSheetConnection(), /봇 시트와 같습니다/);
+
+// 2) 미리보기: 주소를 넣어도 ID를 꺼내고, 지금(사본) → 원본 건수를 나란히 보이며 속성은 그대로다.
+f = fixture({ORIGINAL_HACV_SPREADSHEET_ID: 'https://docs.google.com/spreadsheets/d/' + ORIG + '/edit#gid=0',
+  ORIGINAL_PM_REVIEW_SPREADSHEET_ID: ORIG_PM});
+const before = new Map(f.values);
+f.ctx.previewOriginalSheetConnection();
+const out = f.logs.join('\n');
+assert.match(out, /HA-CV 유저 관리: 원본으로 바뀜 → name:orig/);
+assert.match(out, /PM Review: 원본으로 바뀜/);
+assert.match(out, /테스트지 관리: 그대로/);
+assert.match(out, /업무 합계: 지금 1건 → 원본 2건/);
+assert.match(out, /• PM D: 0 → 1/);
+assert.match(out, /새로 보이는 담당 탭: PM D/);
+assert.deepEqual([...f.values], [...before], 'preview changes no properties');
+assert.ok(f.opened.includes(ORIG) && f.opened.includes(ORIG_PM));
+
+// 2-1) 내 업무 목록: 원본 기준 시범 PM 업무만 한 줄씩, 속성 변경 없음.
+assert.match(out, /원본 담당 탭: PM A, PM D/);
+f.logs.length = 0;
+Object.assign(f.ctx, {requiredProperty_: () => 'bot', requireBotSheet_: () => ({}), readBotRows_: () => [], getPilotPmName_: () => 'PM D'});
+f.ctx.collectPmReviewTasks_ = s => [['PM_REVIEW|5', 'PM D', '', 'ko_KR-en_US', '1차 검수', '검수 Agent 완료', '', '2026-10-30', '', 'PM Review', '', '5']]
+  .concat(/^orig/.test(s.id) ? [] : [['PM_REVIEW|9', 'PM D']]);
+f.ctx.previewOriginalMyTasks();
+assert.equal(f.logs[0], '[원본 기준 내 업무] PM D · 1건 · 읽기만, 변경·발송 없음\n• 1차 검수 · ko_KR-en_US · 검수 Agent 완료 · 2026-10-30 · PM Review 5행');
+assert.deepEqual([...f.values], [...before]);
+
+// 2-2) 담당 탭이 없는 사람(언어쌍 PM 아님)은 예비 작업자 검토·헤즈업을 받지 않고 PM Review는 그대로 받는다.
+f = fixture({ORIGINAL_HACV_SPREADSHEET_ID: ORIG});
+f.ctx.buildHaCvBotTasks_ = () => [['HACV_REVIEW|a', 'PM A'], ['HACV_REVIEW|x', 'PM X']];
+f.ctx.buildHaCvHeadsUpTasks_ = () => [['HACV_HEADSUP|x', 'PM X']];
+f.ctx.collectPmReviewTasks_ = () => [['PM_REVIEW|x', 'PM X']];
+const parts = f.ctx.collectAllWorkTasks_(f.ctx.SpreadsheetApp.openById(ORIG), {}, {}, new Date());
+assert.deepEqual(parts.detected.map(row => row[0]), ['HACV_REVIEW|a']);
+assert.deepEqual(parts.notPairPm.map(row => row[0]), ['HACV_REVIEW|x', 'HACV_HEADSUP|x']);
+assert.deepEqual(parts.pmReviews.map(row => row[1]), ['PM X']);
+f.ctx.previewOriginalSheetConnection();
+assert.match(f.logs.join('\n'), /담당 탭 없음\(언어쌍 PM 아님\) → 언어쌍 업무 2건 제외: PM X/);
+
+// 3) 원본을 못 열면(권한 없음) 미리보기·전환 모두 멈추고 속성은 그대로다.
+f = fixture({ORIGINAL_HACV_SPREADSHEET_ID: 'missing_000000000000000000000000'});
+assert.throws(() => f.ctx.previewOriginalSheetConnection(), /열기 실패\(보기 권한 확인\)/);
+assert.throws(() => f.ctx.switchToOriginalSheets(), /전환 중지/);
+assert.equal(f.values.get('SOURCE_SPREADSHEET_ID'), COPY);
+
+// 4) 전환 → 속성만 원본으로, 이전 값 보관, 회차 재사용 기록 삭제. 되돌리기 → 사본으로 복구.
+f = fixture({ORIGINAL_HACV_SPREADSHEET_ID: ORIG, ORIGINAL_PM_REVIEW_SPREADSHEET_ID: ORIG_PM, BOT_TASKS_REFRESHED: '{}'});
+f.ctx.switchToOriginalSheets();
+assert.equal(f.values.get('SOURCE_SPREADSHEET_ID'), ORIG);
+assert.equal(f.values.get('PM_REVIEW_SPREADSHEET_ID'), ORIG_PM);
+assert.ok(!f.values.has('TEST_MANAGEMENT_SPREADSHEET_ID'), 'unchanged sheet keeps its default');
+assert.ok(!f.values.has('BOT_TASKS_REFRESHED'));
+assert.deepEqual(JSON.parse(f.values.get('COPY_SHEETS_BACKUP')), {SOURCE_SPREADSHEET_ID: COPY, PM_REVIEW_SPREADSHEET_ID: '', TEST_MANAGEMENT_SPREADSHEET_ID: ''});
+f.ctx.revertToCopySheets();
+assert.equal(f.values.get('SOURCE_SPREADSHEET_ID'), COPY);
+assert.ok(!f.values.has('PM_REVIEW_SPREADSHEET_ID'));
+assert.ok(!f.values.has('COPY_SHEETS_BACKUP'));
+assert.throws(() => f.ctx.revertToCopySheets(), /되돌릴 기록/);
+
+// 5) 전환 뒤(원본 = 현재)에도 내 업무 목록은 멈추지 않는다.
+f = fixture({ORIGINAL_HACV_SPREADSHEET_ID: COPY});
+Object.assign(f.ctx, {requiredProperty_: () => 'bot', requireBotSheet_: () => ({}), readBotRows_: () => [], getPilotPmName_: () => 'PM A'});
+assert.throws(() => f.ctx.previewOriginalSheetConnection(), /원본 시트 주소를 먼저/);
+f.ctx.previewOriginalMyTasks();
+assert.match(f.logs.join('\n'), /\[원본 기준 내 업무\] PM A · 1건/);
+
+// 6) 구조 점검: 탭 목록·머리글 줄과 수집기별 통과/실패를 보이고, 쓰기·속성 변경은 없다.
+f = fixture({ORIGINAL_HACV_SPREADSHEET_ID: ORIG, ORIGINAL_PM_REVIEW_SPREADSHEET_ID: ORIG_PM});
+const guard = obj => new Proxy(obj, {get: (target, name) => {
+  if (/^(set|insert|delete|clear|append|copy|remove|add)/.test(String(name))) throw new Error('write attempted: ' + String(name));
+  return target[name];
+}});
+const tab = (name, rows) => guard({getName: () => name, getLastColumn: () => Math.max(...rows.map(r => r.length)),
+  getRange: (r, c, h, w) => guard({getDisplayValues: () => Array.from({length: h}, (_, i) =>
+    Array.from({length: w}, (_, j) => (rows[r - 1 + i] || [])[c - 1 + j] || ''))})});
+const book = (name, tabs) => guard({getName: () => name, getSheets: () => tabs,
+  getSheetByName: n => tabs.find(t => t.getName() === n) || null});
+const books = {
+  [ORIG]: book('HA-CV 원본', [tab('HACV_Hub', [['안내'], ['투입 언어쌍', '', '', '(현) 담당자', '', '담당자 탭으로 전송 여부'], ['비공개 데이터']]),
+    tab('가나다', [[], [], [], ['', '', '', '', '', '', '', '해당 배치'], ['', '', '', '', '', '', '', '구축 상태'], ['', '', '', '', '', '', '', '목표 종료일']])]),
+  [ORIG_PM]: book('PM Review 원본', [tab('PM Review', [['No', '언어쌍', 'Status']])]),
+};
+f.ctx.SpreadsheetApp.openById = id => books[id] || book('테스트 사본', []);
+f.ctx.collectHaCvReviewCandidates_ = () => ({byPm: {'가나다': {}}, unassigned: []});
+f.ctx.collectHaCvHeadsUpCandidates_ = () => { throw new Error('헤즈업 결과 집계 탭을 찾지 못했습니다.'); };
+f.ctx.collectHaCvPmDashboards_ = () => [{pm: '가나다'}];
+const beforeInspect = new Map(f.values);
+f.logs.length = 0;
+f.ctx.inspectOriginalSheetStructure();
+const report = f.logs.join('\n');
+assert.match(report, /■ HA-CV 유저 관리 · HA-CV 원본 · 탭 2개/);
+assert.match(report, /HACV_Hub 2행: A=투입 언어쌍 \| D=\(현\) 담당자 \| F=담당자 탭으로 전송 여부/);
+assert.doesNotMatch(report, /비공개 데이터/, 'data rows are not printed');
+assert.match(report, /HA-CV 헤즈업 결과 집계: 탭 없음/);
+assert.match(report, /- 가나다: 해당 배치 \/ 구축 상태 \/ 목표 종료일/);
+assert.match(report, /✅ HUB 검토 필요: 1명/);
+assert.match(report, /❌ 헤즈업 대상: 헤즈업 결과 집계 탭을 찾지 못했습니다/);
+assert.match(report, /PM Review 1행: A=No \| B=언어쌍 \| C=Status/);
+assert.match(report, /■ 테스트지 관리 \(원본 칸 비어 있음 · 지금 시트\)/);
+assert.deepEqual([...f.values], [...beforeInspect], 'inspect changes no properties');
+
+console.log('Original sheet preview, switch and revert checks passed (no writes to work sheets)');

@@ -10,9 +10,6 @@ const BOT_SETTINGS = Object.freeze({tab:'BOT_SETTINGS', headers:['setting', 'val
   allowed:{
     ENABLE_LUNCH_MATE:{note:'true면 10:30 점심 추천에 점심 메이트 버튼 표시(Slack 버튼 응답 주소 등록 후)'},
     SLACK_VERIFICATION_TOKEN:{note:'Slack 앱 Basic Information의 Verification Token. 반영 후 시트에서 자동 삭제', secret:true},
-    // 속성 화면 50개 한도로 편집기에서 못 바꿀 때(앱 재설치로 토큰이 바뀐 경우 등). xoxb- 형식만 받는다.
-    SLACK_BOT_TOKEN:{note:'Slack 앱 OAuth & Permissions의 Bot User OAuth Token(xoxb-…). 반영 후 시트에서 자동 삭제', secret:true,
-      pattern:/^xoxb-[A-Za-z0-9-]+$/},
     ENABLE_WEATHER:{note:'true면 17:00 DM에 내일 날씨(Open-Meteo, 비상업적 무료 조건 확인 후)'},
     WEATHER_LAT:{note:'날씨 위도(비우면 서울 시청)'}, WEATHER_LON:{note:'날씨 경도'}, WEATHER_PLACE:{note:'날씨에 표시할 지역 이름(예: 강남)'},
     FEEDBACK_FORM_URL:{note:'피드백 "✍️ 자세히 남기기" 버튼이 여는 구글 폼 주소(docs.google.com/forms 또는 forms.gle)'},
@@ -57,25 +54,19 @@ function applyBotSettings() {
   refreshBotSettingsNotes_(sheet);
   const height = Math.max(0, sheet.getLastRow() - 1);
   const rows = height ? sheet.getRange(2, 1, height, 2).getValues() : [];
-  const applied = [], skipped = [], invalid = [];
+  const applied = [], skipped = [];
   rows.forEach((row, index) => {
     const key = String(row[0] || '').trim(), value = String(row[1] == null ? '' : row[1]).trim();
     if (!key || !value) return;
     const info = BOT_SETTINGS.allowed[key];
     if (!info) { skipped.push(key); return; }
-    if (info.pattern && !info.pattern.test(value)) {
-      // 형식이 다르면 반영하지 않는다('삭제'도 받지 않음). 잘못 붙인 비밀 값도 시트에 남기지 않는다.
-      invalid.push(key);
-      if (info.secret) sheet.getRange(index + 2, 2).setValue('');
-      return;
-    }
     if (value === '삭제') props.deleteProperty(key);
     else props.setProperty(key, value);
     applied.push(key + (value === '삭제' ? ' 삭제' : info.secret ? ' 저장(값 숨김)' : ' = ' + value));
     // 민감한 값은 시트에 남기지 않는다. 그 외 값도 반영 후 비워서 다음 실행에 다시 적용되지 않게 한다.
     sheet.getRange(index + 2, 2).setValue('');
   });
-  if (!applied.length && !invalid.length) {
+  if (!applied.length) {
     // 무엇을 읽었는지 보여 준다(값 자체는 출력하지 않음). 다른 파일·다른 열에 적은 경우를 바로 알 수 있게.
     const file = SpreadsheetApp.openById(requiredProperty_(props, 'BOT_SPREADSHEET_ID'));
     const wide = height ? sheet.getRange(2, 1, height, 3).getValues() : [];
@@ -88,8 +79,6 @@ function applyBotSettings() {
     console.log('B열에 값을 적었는데도 0개라면, 위 파일 이름이 값을 적은 시트와 같은지 확인하세요.');
   } else console.log('반영: ' + applied.join(' | '));
   if (skipped.length) console.log('허용되지 않은 이름이라 건너뜀: ' + skipped.join(', '));
-  if (invalid.length) console.log('값 형식이 달라 반영하지 않음(시트 값은 지움): ' + invalid.join(', ') +
-    ' — 봇 토큰은 xoxb-로 시작하는 Bot User OAuth Token을 넣으세요.');
   console.log('봇 시트 BOT_SETTINGS·스크립트 속성만 변경 | DM·원천 시트·트리거 변경 없음');
 }
 
