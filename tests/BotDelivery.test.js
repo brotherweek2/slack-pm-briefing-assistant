@@ -99,7 +99,6 @@ Object.assign(context, {
   buildSlackDigestItems_: records => records,
   readSlackDigestSeen_: () => [],
   slackDigestFingerprint_: () => 'synthetic-hash',
-  formatSlackDigestSections_: (_pm, items) => '\nBBPM/개인 확인사항 ' + items.length,
   selectPersonalSlackItems_: (pm,items) => items.filter(item=>item.pm===pm),
   formatPersonalSlackDigest_: items => '\nBBPM/개인 확인사항 ' + items.length,
   attachSlackToWorkLines_:(text,items)=>({text,rest:items,attached:0}),attachSlackAuthorNames_:items=>items,

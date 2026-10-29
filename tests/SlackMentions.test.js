@@ -29,13 +29,8 @@ function runSlackMentionsChecks(load) {
     Utilities: { formatDate: date => date.toISOString().slice(0, 16) },
   };
   const api = load(common);
-  const recipients = api.selectSlackMentionRecipients_([
-    ['PM A', ids[0], false], ['PM B', ids[1], false],
-    ['PM C', ids[2], false], ['PM D', '', false],
-  ]);
-  eq(recipients.length, 3, 'preview does not enable sending and skips missing IDs');
-  throws(() => api.selectSlackMentionRecipients_([['PM A', ids[0]], ['PM A', ids[1]]]), /중복/, 'duplicate name rejected');
-  throws(() => api.selectSlackMentionRecipients_([['PM A', ids[0]], ['PM B', ids[0]]]), /같은 Slack ID/, 'duplicate ID rejected');
+  // 수신자 명단(이름·Slack ID). 명단 검증은 발송부 buildPmSlackRoutes_가 맡는다.
+  const recipients = [{pm: 'PM A', id: ids[0]}, {pm: 'PM B', id: ids[1]}, {pm: 'PM C', id: ids[2]}];
   const replyLink = 'https://example.slack.com/archives/C00000001/p1700000001000001?thread_ts=1700000000.000001';
   const root = api.parseSlackMentionThreadUrl_(replyLink);
   eq(root.ts, '1700000000.000001', 'reply link retains old parent timestamp');
@@ -117,7 +112,7 @@ if (typeof module !== 'undefined' && module.exports) {
   const load = globals => {
     const context = vm.createContext(globals);
     vm.runInContext(source, context);
-    return vm.runInContext('({ readSlackMentionConfig_, parseSlackMentionThreadUrl_, selectSlackMentionRecipients_, ' +
+    return vm.runInContext('({ readSlackMentionConfig_, parseSlackMentionThreadUrl_, ' +
       'collectSlackMentionMessages_, slackMentionReadApi_, classifySlackMentionMessages_ })', context);
   };
   console.log('Slack mention checks passed: ' + runSlackMentionsChecks(load));

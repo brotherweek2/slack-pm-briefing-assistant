@@ -117,13 +117,4 @@ users = makeSheet([
 ctx = load();
 assert.equal(JSON.stringify(ctx.selfCalendarRegistry_(ctx.PropertiesService.getScriptProperties()).map(r => r.pm)), '["PM B"]');
 
-// 준비 함수: 열 제목·체크박스를 만들고, 예전 명단에 있던 사람을 미리 체크한다. E1에 다른 값이 있으면 중지.
-ctx.setupCalendarConnectColumn();
-assert.equal(users.data[0][4], 'calendar_connect');
-assert.equal(JSON.stringify(users.data.slice(1).map(r => r[4])), '[false,true]');
-assert.equal(users.data.validated, 2);
-users = makeSheet([['pm_name', 'slack_user_id', 'send_enabled', 'email', 'memo'], ['PM A', 'U00000001', true, 'a@example.test', 'x']]);
-ctx = load();
-assert.throws(() => ctx.setupCalendarConnectColumn(), /E1에 다른 값/);
-assert.equal(users.data[1][4], 'x', 'no change when E1 is occupied');
 console.log('Connection simplification and meeting section layout checks passed');

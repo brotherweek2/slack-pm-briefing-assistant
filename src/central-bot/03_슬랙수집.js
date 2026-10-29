@@ -16,7 +16,6 @@
  * - bbpmBusyError_(): 다른 수집이 진행 중임을 구분하는 오류를 만든다
  * - readSlackMentionConfig_(props): 봇 인증·그룹·기간·스레드·자동 발견 채널 설정을 확인한다
  * - parseSlackMentionThreadUrl_(url): Slack 링크에서 워크스페이스·채널·부모 스레드 정보를 추출한다
- * - selectSlackMentionRecipients_(rows): BOT_USERS의 이름·Slack ID 중복과 형식을 확인한다
  * - collectSlackMentionMessages_(config, now): 자동 발견 수집의 중복 실행을 막고 종료 시 점유를 해제한다
  * - collectSlackMentionRecordsBatch_(config, now): Slack 봇·그룹을 확인하고 채널·부모글·답글을 호출 예산 안에서 읽는다
  * - discoverBbpmThreads_(config, host, oldest, newest, budget): 채널 이력 발견 작업을 수집 점유로 보호한다
@@ -120,23 +119,6 @@ function parseSlackMentionThreadUrl_(url) {
   const ts = params.thread_ts || digits.slice(0, -6) + '.' + digits.slice(-6);
   if (!/^\d{10,}\.\d{6}$/.test(ts)) throw new Error('스레드 부모 메시지 ID 형식이 잘못되었습니다.');
   return { host: match[1].toLowerCase(), channel: match[2].toUpperCase(), ts };
-}
-
-function selectSlackMentionRecipients_(rows) {
-  const names = new Set();
-  const ids = new Set();
-  return rows.flatMap(row => {
-    const pm = String(row[0] || '').trim();
-    const id = String(row[1] || '').trim();
-    if (!pm) return [];
-    if (names.has(pm)) throw new Error('BOT_USERS의 PM 이름이 중복됩니다.');
-    names.add(pm);
-    if (!id) return [];
-    if (!/^[UW][A-Z0-9]{8,}$/.test(id)) throw new Error('BOT_USERS의 Slack 사용자 ID 형식을 확인하세요.');
-    if (ids.has(id)) throw new Error('BOT_USERS에서 같은 Slack ID가 여러 PM에 등록돼 있습니다.');
-    ids.add(id);
-    return [{ pm, id }];
-  });
 }
 
 function collectSlackMentionMessages_(config, now) {

@@ -7,7 +7,6 @@
  * 직접 실행 (🔍 조회만 · ⚠️ 보내거나 바꿈 · ⏰ 자동 호출)
  * - ⚠️ setupBotRestaurants(): 봇 시트에 BOT_RESTAURANTS 탭을 만들고 기본 식당 목록을 채운다
  * - 🔍 previewMyLunchRecommendation(): 오늘 본인에게 갈 점심 추천을 로그로만 보여준다
- * - ⚠️ updateBotLunchRecommendations(): BOT_RESTAURANTS 탭의 예전 항목을 새 기본값으로 고친다
  *
  * 내부 함수 (직접 실행하지 않음)
  * - defaultLunchRestaurantRows_(): 코드에 든 기본 식당 목록을 표 행으로 만든다
@@ -188,41 +187,4 @@ function previewMyLunchRecommendation() {
     '곳 | 식당 활성 ' + catalog.filter(x => x.category === '식당' && ['confirmed','approximate'].includes(x.status) && x.enabled).length +
     '곳 | 간단식 활성 ' + catalog.filter(x => x.category !== '식당' && ['confirmed','approximate'].includes(x.status) && x.enabled).length + '곳');
   console.log('미리보기만 | 메뉴 검색 API·시트/이력/트리거 변경·Slack 발송 없음');
-}
-
-function updateBotLunchRecommendations() {
-  const props = PropertiesService.getScriptProperties();
-  const botId = requiredProperty_(props,'BOT_SPREADSHEET_ID');
-  if (botId !== BOT_WORKBOOK.bootstrapId || botId === props.getProperty('SOURCE_SPREADSHEET_ID')) {
-    throw new Error('지정된 브리핑 전용 시트만 업데이트할 수 있습니다.');
-  }
-  const lock = LockService.getScriptLock();
-  if (!lock.tryLock(30000)) throw new Error('다른 브리핑 작업 중입니다.');
-  let missing = false;
-  try {
-    const bot = SpreadsheetApp.openById(botId), sheet = bot.getSheetByName(BOT_RESTAURANTS.tab);
-    if (!sheet) missing = true;
-    else {
-      assertBotHeaders_(sheet,BOT_RESTAURANTS.headers);
-      const rows = readBotRows_(sheet,BOT_RESTAURANTS.headers.length);
-      const defaults = defaultLunchRestaurantRows_();
-      validateLunchRestaurantRows_(defaults);
-      const changes = [], deletions = [];
-      rows.forEach((row,index) => {
-        const name = String(row[1] || '').trim();
-        if (BRIEFING_LUNCH_REMOVED_NAMES.includes(name)) deletions.push(index+2);
-        else if (['pending','not_lunch'].includes(String(row[10]))) {
-          const replacement = defaults.find(item => item[0] === row[0] && item[1] === name);
-          if (replacement) changes.push({row:index+2,values:replacement});
-        }
-      });
-      changes.forEach(change => {
-        sheet.getRange(change.row,10,1,1).setNumberFormat('@');
-        sheet.getRange(change.row,1,1,BOT_RESTAURANTS.headers.length).setValues([change.values]);
-      });
-      deletions.sort((a,b) => b-a).forEach(row => sheet.deleteRow(row));
-      console.log('봇 식당 탭 업데이트 ' + changes.length + '행·삭제 ' + deletions.length + '행 | 기존 confirmed 체크·원천·이력·트리거·DM 변경 없음');
-    }
-  } finally { lock.releaseLock(); }
-  if (missing) setupBotRestaurants();
 }

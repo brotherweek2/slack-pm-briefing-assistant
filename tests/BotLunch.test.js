@@ -86,15 +86,4 @@ ctx.setupBotRestaurants();assert.equal(seeded,75);assert.ok(checkboxOrder<valueO
 
 // (예전 sendMyLunchRecommendationTest 시험은 제거됨 10/23. 점심 노출은 통합 DM 테스트에서 확인)
 assert.equal(externalCalls,0);
-// Migration touches only old pending/not_lunch rows and removes the two specifically requested venues.
-const legacy=[rows[0].slice(),rows.find(x=>x[1]==='예시식당 48').slice(),
-  rows.find(x=>x[2]==='카페').slice(),['LUNCH_022','삭제된예시 1'],['LUNCH_027','삭제된예시 2']];
-legacy[0][11]=false;legacy[1][10]='pending';legacy[1][11]=false;legacy[2][10]='not_lunch';legacy[2][11]=false;
-const modified=[],deleted=[];
-const legacySheet={rows:legacy,getRange:(r,c)=>({setNumberFormat:()=>{},setValues:v=>modified.push({r,c,v})}),deleteRow:r=>deleted.push(r)};
-ctx.SpreadsheetApp={openById:()=>({getSheetByName:()=>legacySheet})};
-ctx.updateBotLunchRecommendations();assert.equal(modified.length,2);assert.deepEqual(deleted,[6,5]);
-assert.ok(modified.every(x=>x.v[0][10]==='approximate'&&x.v[0][11]===true));
-assert.equal(legacy[0][11],false,'existing confirmed disabled choices remain disabled');
-values.set('SOURCE_SPREADSHEET_ID','test-bot');assert.throws(()=>ctx.updateBotLunchRecommendations(),/전용/);values.delete('SOURCE_SPREADSHEET_ID');
-console.log('Lunch copy without URLs, stable IDs, two independent meal/light choices, history, safe setup/migration and test delivery passed');
+console.log('Lunch copy without URLs, stable IDs, two independent meal/light choices, history, safe setup and test delivery passed');

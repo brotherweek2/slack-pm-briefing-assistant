@@ -5,7 +5,6 @@
  * - 발송 이력은 읽음·완료 기록이 아니다. 사람별 최근 150개 해시만 보관한다.
  *
  * 직접 실행 (🔍 조회만 · ⚠️ 보내거나 바꿈 · ⏰ 자동 호출)
- * - 🔍 previewSavedSlackBriefings(): 완료된 저장 자료를 현재 규칙으로 다시 분류해 전체 목록을 출력한다
  *
  * 내부 함수 (직접 실행하지 않음)
  * - slackDigestPlain_(text): 링크·멘션·서식을 덜어내 검색 가능한 본문을 만든다
@@ -13,7 +12,6 @@
  * - classifySlackDigest_(record): 요청·업무 유형·프로젝트·언어쌍·명시 기한·불확실성을 판별한다
  * - slackDigestDeadline_(line): 원문에 적힌 날짜·시간 표현만 짧게 추출한다
  * - buildSlackDigestItems_(records): 동일 PM·범위·스레드·업무·프로젝트의 반복 안내를 묶고 링크·조건을 보존한다
- * - formatSlackDigestSections_(pm, items, options): 점검용으로 우선 확인과 업무별 링크 목록을 전부 표시한다
  * - selectPersonalSlackItems_(pm, items, seen, day, slot): 새·변경 안내와 명시된 오늘 기한, 저녁의 내일 기한을 선택한다
  * - formatPersonalSlackDigest_(items, day, slot, attachedCount): 개인·BBPM을 구분하고 키워드 링크·원문 날짜·기한을 표시한다
  * - slackDigestDueLabel_(due, raw): 날짜를 계산할 수 있는 기한은 '10/22(목)'로 통일한다(익일·내일·'10/22 (목)' 혼용 방지)
@@ -27,7 +25,6 @@
  * - slackDigestPostedAt_(ts): Slack 메시지 시각을 한국 시간 월/일로 표시한다
  * - slackDigestDueDay_(item): 명시 날짜나 원문 작성일 기준 상대 날짜를 판별하고 불명확하면 비워 둔다
  * - slackDigestDisplayKeywords_(item): 작업명·업무·프로젝트·언어쌍·주의 조건을 짧은 링크 제목으로 만든다
- * - readSavedSlackItems_(props, emitPreview): 완료본과 수신자·규칙·발송 이력을 읽으며 최초 완료본 전에는 구 캐시로 연결한다
  * - slackDigestFingerprint_(item): 원문 링크·본문·부모 문맥을 해시로 바꿔 변경 여부를 구분한다
  * - readSlackDigestSeen_(props, id): 수신자별 최근 발송 해시를 읽고 형식을 확인한다
  * - markSlackDigestSeen_(props, id, old, items, current): 성공한 DM에 표시한 항목의 해시만 스크립트 속성에 저장한다
@@ -190,59 +187,6 @@ function buildSlackDigestItems_(records) {
       sourceUrls: group.map(item => item.url), mergedCount: group.length,
     });
   }).sort((a, b) => a.rank - b.rank || Number(b.ts) - Number(a.ts));
-}
-
-function formatSlackDigestSections_(pm, items, options) {
-  options = options || {};
-  const day = options.day || Utilities.formatDate(new Date(), BRIEFING.timezone, 'yyyy-MM-dd');
-  const seen = Array.isArray(options.seen) ? options.seen : null;
-  const own = items.filter(item => item.pm === pm);
-  if (!own.length) return '';
-  const planned = own.map(item => {
-    const due = slackDigestDueDay_(item);
-    const explicitRequest = /요청|부탁|바랍니다|해\s*주|필요/.test(slackDigestPlain_(item.text));
-    const request = item.state === '요청・안내' && explicitRequest &&
-      !item.needsReview && !item.notice && !item.informational && item.kind !== '운영 기준';
-    const reason = request && due === day ? '오늘 마감' : due && due < day ? '' :
-      request && item.category === 'direct' ? '내게 온 요청' : request && item.kind === '일정 변경' ? '변경 요청' : '';
-    const order = {'오늘 마감':0,'내게 온 요청':1,'변경 요청':2};
-    return {item, due, reason, order:reason ? order[reason] : 3,
-      fresh:seen === null ? null : !seen.includes(slackDigestFingerprint_(item))};
-  }).sort((a,b) => a.order-b.order || (a.due || '9999').localeCompare(b.due || '9999') ||
-    Number(b.item.ts)-Number(a.item.ts));
-  const lines = ['', '*Slack 확인사항 ' + own.length + '건* · ' + day + ' 우선순위 기준'];
-  if (seen !== null) lines.push('발송 이력 기준 새 항목 ' + planned.filter(row => row.fresh).length + '건 · 읽음 여부와 다름');
-  const link = row => {
-    const item = row.item;
-    const work = /^(작업명 확인 필요|여러 작업)$/.test(item.task) ? '' : item.task.replace('·스레드 문맥','') + ' · ';
-    const title = item.notice ? work + item.summary : slackDigestDisplayKeywords_(item);
-    const scope = item.category === 'direct' ? '개인' : 'BBPM';
-    const deadline = item.deadline ? (/^(?:\d|오늘|내일|익일|퇴근|오전|오후)/.test(item.deadline) &&
-      item.deadline.length <= 45 ? item.deadline : '원문 확인') : '';
-    return '[' + scope + '] <' + item.url + '|' + escapeSlack_(title) + '>' +
-      (slackDigestPostedAt_(item.ts) ? ' · 원문 ' + slackDigestPostedAt_(item.ts) : '') +
-      (deadline ? ' · 기한: ' + escapeSlack_(deadline) : '') +
-      (row.due && row.due < day ? ' (기한 경과·상태 확인)' : '');
-  };
-  const first = planned.filter(row => row.reason);
-  if (first.length) {
-    lines.push('', '*오늘 먼저 확인*');
-    first.forEach(row => lines.push('• ' + row.reason + ' · ' + link(row)));
-  }
-  const groups = new Map();
-  planned.filter(row => !row.reason).forEach(row => {
-    const item = row.item;
-    const key = item.needsReview ? '확인 필요' : item.notice || item.kind === '운영 기준' ? '운영 안내' :
-      /회의|세션/.test(item.kind) ? '회의·세션' :
-      /검수|테스트지/.test(item.kind) ? '검수·테스트' : item.kind;
-    if (!groups.has(key)) groups.set(key, []);
-    groups.get(key).push(link(row));
-  });
-  if (groups.size) {
-    lines.push('', '*업무별 링크 모음*');
-    groups.forEach((links, key) => lines.push('• *' + escapeSlack_(key) + '*\n  ' + links.join('\n  ')));
-  }
-  return lines.join('\n');
 }
 
 // DM 전용 선택. 발송 이력은 읽음/완료가 아니며 점검용 전체 목록은 유지한다.
@@ -469,29 +413,6 @@ function slackDigestDisplayKeywords_(item) {
     parts.push(pairs.length > 2 ? '언어쌍 ' + pairs.length + '개' : '원문 언어쌍: ' + pairs.join(', '));
   }
   return [...new Set(parts.filter(Boolean))].join(' · ');
-}
-
-/** 마지막 완료본으로 문안만 재검증한다. 새 메시지 수집·DM 발송 없음. */
-function previewSavedSlackBriefings() {
-  readSavedSlackItems_(PropertiesService.getScriptProperties(), true);
-}
-
-function readSavedSlackItems_(props, emitPreview) {
-  if (props.getProperty('ENABLE_SLACK_MENTION_READ') !== 'true') throw new Error('Slack 읽기 비활성');
-  const bot = SpreadsheetApp.openById(requiredProperty_(props, 'BOT_SPREADSHEET_ID'));
-  const snapshot = readBbpmSnapshot_(props, bot);
-  if (!snapshot) throw new Error('완료된 Slack 수집 결과가 없습니다. 03_슬랙수집.gs → collectBbpmSnapshot 을 먼저 실행하세요.');
-  const users = requireBotSheet_(bot, BOT_WORKBOOK.usersTab, BOT_WORKBOOK.userHeaders);
-  const recipients = selectSlackMentionRecipients_(readBotRows_(users, BOT_WORKBOOK.userHeaders.length));
-  const items = buildSlackDigestItems_(classifySlackSnapshot_(snapshot, recipients));
-  if (emitPreview) {
-    recipients.forEach(pm => console.log('💬 *' + escapeSlack_(pm.pm) + '* 님 저장 결과 분류 미리보기' +
-      (formatSlackDigestSections_(pm.pm, items, {seen:readSlackDigestSeen_(props, pm.id)}) || '\n이 저장 범위에서 표시할 확인사항 없음')));
-    console.log('Slack 완료본 기준: ' + Utilities.formatDate(new Date(snapshot.meta.newest * 1000),
-      BRIEFING.timezone, 'yyyy-MM-dd HH:mm') + ' | 조회 메시지 ' + snapshot.meta.messageCount + '개 | 분류 ' +
-      items.length + '건 | 새 메시지 수집·Slack 발송 없음');
-  }
-  return {items, recipients, asOf:snapshot.meta.newest};
 }
 
 // 성공 발송한 메시지만 기억한다. 원문·토큰은 저장하지 않으며 미리보기는 이력을 변경하지 않는다.

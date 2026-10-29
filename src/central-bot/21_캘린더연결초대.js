@@ -8,7 +8,6 @@
  * 직접 실행 (🔍 조회만 · ⚠️ 보내거나 바꿈 · ⏰ 자동 호출)
  * - 🔍 previewCalendarConnectionInvites(): 지정 PM의 초대 문안·중복 상태 조회만
  * - ⚠️ sendCalendarConnectionInvites(): 관리자 지정 PM에게 실제 연결 링크 DM
- * - ⚠️ setupCalendarConnectColumn(): BOT_USERS E열에 calendar_connect 체크박스를 만든다(예전 이메일 명단은 미리 체크)
  *
  * 내부 함수 (직접 실행하지 않음)
  * - calendarInviteKey_(route): PM별 초대 이력의 속성 이름(이메일·Slack ID 해시)
@@ -174,31 +173,4 @@ function disconnectCalendarOnboarding_(r,props,route) {
   if(record.previousSendEnabled===false) calendarEnrollmentFlag_(route,props,false);
   record.status='sent';record.confirmedAt=0;record.connectionId='';
   props.setProperty(calendarInviteKey_(route),JSON.stringify(record));
-}
-
-// BOT_USERS E열에 calendar_connect 체크박스를 만든다. 예전 이메일 명단에 있던 사람은 미리 체크해 동작을 유지한다.
-function setupCalendarConnectColumn() {
-  const props=PropertiesService.getScriptProperties();
-  const sheet=SpreadsheetApp.openById(requiredProperty_(props,'BOT_SPREADSHEET_ID')).getSheetByName(BOT_WORKBOOK.usersTab);
-  if(!sheet||sheet.getRange(1,4).getValue()!=='email') throw new Error('BOT_USERS D열 email이 필요합니다. syncBotUsersFromSlack을 먼저 실행하세요. 시트 변경 없음.');
-  const header=String(sheet.getRange(1,5).getValue()||'').trim();
-  if(header&&header!==CALENDAR_CONNECT_HEADER) throw new Error('BOT_USERS E1에 다른 값('+header+')이 있어 중지합니다. 시트 변경 없음.');
-  let allowed;
-  try { allowed=JSON.parse(props.getProperty('SELF_CALENDAR_ALLOWED_EMAILS')||'[]'); }
-  catch(_) { throw new Error('SELF_CALENDAR_ALLOWED_EMAILS 형식 오류. 시트 변경 없음.'); }
-  const allowedSet=new Set((Array.isArray(allowed)?allowed:[]).map(email=>String(email).trim().toLowerCase()));
-  const count=Math.max(0,sheet.getLastRow()-1);
-  const rows=count?sheet.getRange(2,1,count,5).getValues():[];
-  const values=rows.map(row=>[row[4]===true||allowedSet.has(String(row[3]||'').trim().toLowerCase())]);
-  if(!header) sheet.getRange(1,5).setValue(CALENDAR_CONNECT_HEADER);
-  if(count) {
-    const range=sheet.getRange(2,5,count,1);
-    range.setDataValidation(SpreadsheetApp.newDataValidation().requireCheckbox().build());
-    range.setValues(values);
-  }
-  const checked=values.filter(value=>value[0]).length;
-  const noEmail=rows.filter((row,index)=>values[index][0]&&!String(row[3]||'').trim()).map(row=>String(row[0]).trim());
-  console.log('BOT_USERS calendar_connect 열 준비 · 체크 '+checked+'명 (예전 이메일 명단 '+allowedSet.size+'명 반영)'+
-    (noEmail.length?' · 이메일 없어 제외될 행: '+noEmail.join(', '):'')+
-    '\n이제 이 열에 체크하면 연결 허용·초대 대상이 됩니다 · E열만 변경, DM·속성·트리거 변경 없음');
 }
