@@ -5,11 +5,11 @@
  * - BOT_PHRASES 탭이 없으면 코드 문구(11번 파일)를 쓴다. 같은 날·회차·사람은 같은 문구.
  *
  * 직접 실행 (🔍 조회만 · ⚠️ 보내거나 바꿈 · ⏰ 자동 호출)
- * - ⚠️ setupBotPhrases(): BOT_PHRASES 탭을 만들고 기본 문구 1,000개를 채운다(있으면 보존)
+ * - ⚠️ setupBotPhrases(): BOT_PHRASES 탭을 만들고 기본 완성형 문구 80개를 채운다(있으면 보존)
  * - 🔍 previewBriefingPhraseSamples(): 회차별 활성 수·핵심 문장 수와 주제별 샘플을 로그로 출력한다
  *
  * 내부 함수 (직접 실행하지 않음)
- * - defaultBriefingPhraseRows_(): 주제별 핵심 문장과 마무리를 조합해 오전·오후 각500개 행을 만든다
+ * - defaultBriefingPhraseRows_(): 오전·마무리 각 40개의 완성형 문구를 행으로 만든다(문장 조합 없음)
  * - validateBriefingPhraseRows_(rows): ID·회차·문장그룹·한 줄 길이·체크박스·중복을 검사한다
  * - readBriefingPhraseCatalog_(bot): BOT_PHRASES를 읽고 탭이 없으면 코드 기본 목록을 사용한다
  * - briefingPhraseStateKey_(route,slot): 수신자와 회차를 해시로 바꿔 이력 속성 이름을 만든다
@@ -26,14 +26,8 @@ const BOT_PHRASES = Object.freeze({tab:'BOT_PHRASES',
 function defaultBriefingPhraseRows_() {
   const rows = [];
   ['11:00','17:00'].forEach(slot => {
-    let coreNumber = 0;
-    BRIEFING_PHRASE_SEEDS[slot].forEach(group => {
-      group.cores.forEach(core => {
-        const family = (slot === '11:00' ? 'AM' : 'PM') + '-' + String(++coreNumber).padStart(3,'0');
-        group.tails.forEach((tail,index) => rows.push([family + '-' + (index+1),slot,group.theme,
-          family,core + ' ' + tail,true]));
-      });
-    });
+    BRIEFING_PHRASE_BANK[slot].forEach(item => rows.push([
+      item.id,slot,item.theme,item.id,item.text,true]));
   });
   return rows;
 }
@@ -61,7 +55,7 @@ function readBriefingPhraseCatalog_(bot) {
   return validateBriefingPhraseRows_(readBotRows_(sheet, BOT_PHRASES.headers.length));
 }
 
-/** 브리핑 전용 시트에만 오전/오후 각500가지 기본값 적재. 기존 문구가 있으면 보존한다. 발송 없음. */
+/** 브리핑 전용 시트에만 오전·마무리 각40개 기본값 적재. 기존 문구가 있으면 보존한다. 발송 없음. */
 function setupBotPhrases() {
   const props = PropertiesService.getScriptProperties();
   const botId = requiredProperty_(props, 'BOT_SPREADSHEET_ID');
@@ -86,7 +80,7 @@ function setupBotPhrases() {
     sheet.getRange(2,6,rows.length,1).insertCheckboxes();
     sheet.getRange(2,1,rows.length,6).setValues(rows);
     sheet.getRange(2,5,rows.length,1).setWrap(true);
-    console.log('브리핑 전용 BOT_PHRASES!A1:F1001 준비 | 오전500·오후500 조합 | Slack 발송·트리거 변경 없음');
+    console.log('브리핑 전용 BOT_PHRASES!A1:F'+(rows.length+1)+' 준비 | 오전40·마무리40 완성형 문구 | Slack 발송·트리거 변경 없음');
   } finally { lock.releaseLock(); }
 }
 
@@ -124,6 +118,8 @@ function pickBriefingPhrase_(props,route,day,slot,catalog) {
   const families = new Set(state.history.slice(-BOT_PHRASES.recentFamilies).map(item => item.family));
   const ids = new Set(state.history.map(item => item.id));
   let candidates = active.filter(item => !families.has(item.family) && !ids.has(item.id));
+  // 완성형 40개 은행에서는 60회 이력에 모든 ID가 들어갈 수 있다. 그래도 최근 20개 제외를 우선한다.
+  if (!candidates.length) candidates = active.filter(item => !families.has(item.family));
   if (!candidates.length) candidates = active.filter(item => !ids.has(item.id));
   if (!candidates.length) candidates = active;
   const bytes = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256,JSON.stringify([route.id,day,slot]));

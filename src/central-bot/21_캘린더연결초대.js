@@ -87,14 +87,7 @@ function sendCalendarConnectionInvites() {
   const lock=LockService.getUserLock();
   if(!lock.tryLock(1000)) throw new Error('다른 캘린더 연결 작업 진행 중. 잠시 후 다시 시도하세요.');
   try {
-    const shareFile=props.getProperty('ENABLE_CALENDAR_AUTO_SHARE')==='true'?calendarConnectorFile_(props):null;
     setup.routes.forEach(route=>{
-      if(shareFile) {
-        try {
-          const access=ensureCalendarConnectorViewer_(route,shareFile);
-          console.log(route.pm+' | 연결 앱 보기 권한 '+(access==='existing'?'기존 유지':'추가 확인'));
-        } catch(_) {console.log(route.pm+' | 연결 앱 보기 권한 확인 실패. 초대 DM 중지');return;}
-      }
       const old=calendarInviteRecord_(props,route);
       if(old&&old.status!=='rejected') {console.log(route.pm+' | 기존 초대/연결 기록 있음. 중복 DM 없음');return;}
       const record={pm:route.pm,slackId:route.slackId,status:'pending',issuedAt:Date.now()};
