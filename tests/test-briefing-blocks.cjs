@@ -15,7 +15,7 @@ module.exports = function loadBriefingBlocks(context) {
 // 각 테스트가 직접 넣은 가짜 함수가 있으면 덮어쓰지 않는다. 기능 자체는 WeeklyLunchWeather.test.js에서 검사한다.
 const defaults = {
   formatWeeklyOutlook_: () => '', formatTomorrowWeather_: () => '', formatWeekendCountdown_: () => '', formatEveningNotes_: () => '',
-  lunchMateParticipants_: () => [], lunchMatePlan_: () => new Map(), applyLunchMate_: selection => selection,
+  lunchMateParticipants_: () => [], lunchMateTodayParticipants_: () => [], lunchMatePlan_: () => new Map(), applyLunchMate_: selection => selection,
   formatLunchMateLine_: () => '', lunchMateOn_: () => false, lunchMateButtonBlock_: () => null, insertLunchMateButton_: blocks => blocks,
   appendFeedbackButtons_: blocks => blocks, feedbackEnabled_: () => false, morningTaskKeys_: () => null, briefingSlotLabel_: slot => slot,
   formatAfternoonUpdate_: (pm) => ({text: 'AFTERNOON ' + pm, quiet: false}),

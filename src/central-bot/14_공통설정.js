@@ -33,6 +33,8 @@ const BRIEFING = Object.freeze({
   reviewStatus: '검토 필요',
   headsUpStatus: '헤즈업 대상',
   slackPostUrl: 'https://slack.com/api/chat.postMessage',
+  // Slack 멘션을 읽는 채널(승인된 곳만). 수집 검사와 DM 기준 줄 표시가 이 목록을 함께 쓴다. 채널을 늘리면 여기에 추가.
+  slackChannels: Object.freeze(['pm_team_channel']),
 });
 
 // 현재 파이프라인이 사용하는 원천 수집·Slack 전송 공통 함수만 둔다.

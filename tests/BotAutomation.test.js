@@ -5,7 +5,7 @@ const crypto = require('node:crypto');
 const digestUtilities = {DigestAlgorithm:{SHA_256:'sha256'},
   computeDigest:(_algo,text)=>crypto.createHash('sha256').update(text).digest(),
   base64EncodeWebSafe:bytes=>Buffer.from(bytes).toString('base64url')};
-const ctx = vm.createContext({console, Utilities:digestUtilities, BRIEFING:{timezone:'Asia/Seoul'},
+const ctx = vm.createContext({console, Utilities:digestUtilities, BRIEFING:{timezone:'Asia/Seoul',slackChannels:['pm_team_channel']},
   LockService:{getScriptLock:()=>({tryLock:()=>true,releaseLock:()=>{}})}});
 vm.runInContext(fs.readFileSync('src/central-bot/03_슬랙수집.js','utf8'),ctx);
 // 공휴일 판단(28번)은 DayOff.test.js에서 검사한다. 여기서는 이 테스트의 평일 가짜 함수를 따른다.

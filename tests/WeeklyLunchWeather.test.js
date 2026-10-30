@@ -76,6 +76,13 @@ assert.ok([...groups.values()].every(n => n >= 2), 'everyone gets at least one m
 assert.ok([...plan.values()].every(r => r.category === '식당'));
 const replan = ctx.lunchMatePlan_([...participants].reverse(), catalog, '2026-10-23');
 assert.ok(participants.every(p => replan.get(p.id) === plan.get(p.id)), 'same plan in every batch');
+// 정기 발송 묶음 사이에 누가 켜거나 꺼도 그날 명단은 첫 묶음 그대로(10/30: 묶음마다 메이트 수가 달랐던 문제)
+const firstBatch = JSON.stringify(ctx.lunchMateTodayParticipants_(props, users, '2026-10-23'));
+values.set('LUNCH_MATE_U0000000' + 5 + '0', 'on'); values.set('LUNCH_MATE_U0000000' + 0 + '0', 'off');
+assert.equal(JSON.stringify(ctx.lunchMateTodayParticipants_(props, users, '2026-10-23')), firstBatch, 'later batches reuse the first list');
+assert.equal(ctx.lunchMateTodayParticipants_(props, users, '2026-10-24').length, 5, 'next day picks up the changes');
+assert.ok(ctx.lunchMateTodayParticipants_(props, users, '2026-10-24').some(p => p.id === 'U0000000' + 5 + '0'));
+values.set('LUNCH_MATE_U0000000' + 5 + '0', 'off'); values.set('LUNCH_MATE_U0000000' + 0 + '0', 'on'); values.delete('LUNCH_MATE_TODAY');
 const me = participants[0], light = {name: '가벼운곳'};
 const applied = ctx.applyLunchMate_({id: 'Lx', name: '원래', light}, plan, me, '2026-10-23');
 assert.equal(applied.id, plan.get(me.id).id); assert.equal(applied.light, light, 'light pick kept');
@@ -111,6 +118,20 @@ assert.equal(fetches.length, 1); assert.match(JSON.parse(fetches[0].opt.payload)
 assert.equal(JSON.parse(fetches[0].opt.payload).response_type, 'ephemeral');
 press({...base, actions: [{action_id: 'lunch_mate_toggle', value: 'off'}]});
 assert.equal(values.get('LUNCH_MATE_U00000077'), 'off');
+// 누른 DM의 버튼이 바로 켜기↔끄기로 바뀐다(다른 블록은 그대로). 버튼 없는 메시지는 바꾸지 않는다.
+const dmBlocks = ctx.insertLunchMateButton_(blocks, ctx.lunchMateButtonBlock_(false));
+fetches = [];
+press({...base, message: {text: 'DM 원문', blocks: dmBlocks}});
+const replaced = JSON.parse(fetches[0].opt.payload);
+assert.equal(replaced.replace_original, true); assert.equal(replaced.text, 'DM 원문');
+assert.equal(replaced.blocks.length, dmBlocks.length, 'same number of blocks');
+assert.equal(replaced.blocks[3].elements[0].value, 'off', 'button now says 끄기');
+assert.match(replaced.blocks[3].elements[0].text.text, /끄기/);
+assert.match(replaced.blocks[4].elements[0].text, /끄면/);
+assert.equal(JSON.stringify(replaced.blocks[0]) + JSON.stringify(replaced.blocks[6]), JSON.stringify(dmBlocks[0]) + JSON.stringify(dmBlocks[6]));
+assert.match(JSON.parse(fetches[1].opt.payload).text, /켰어요/);
+assert.equal(ctx.lunchMateToggledBlocks_(blocks, true), null, 'no button, no replace');
+press({...base, actions: [{action_id: 'lunch_mate_toggle', value: 'off'}]});
 press({...base, actions: [{action_id: 'other', value: 'on'}]});
 assert.equal(values.get('LUNCH_MATE_U00000077'), 'off', 'other actions ignored');
 fetches = [];

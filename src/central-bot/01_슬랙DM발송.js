@@ -261,7 +261,7 @@ function sendPmBriefings_(updatedTest, includeSlack, scheduledSlot, _unused, del
     let lunchCatalog;
     timing.prepareMs=Date.now()-prepareStarted;
     const deliveryStarted=Date.now();
-    let lunchMate = null; // 점심 메이트: 켠 PM 전원 기준으로 한 번만 계산(묶음이 달라도 같은 결과)
+    let lunchMate = null; // 점심 메이트: 켠 PM 전원 기준으로 한 번만 계산(정기 발송은 그날 고정 명단이라 묶음이 달라도 같은 결과)
     const failures = [];
     for (const packet of packets) {
       const {route,ownTasks,seen,shownSlack,slackSection,effectiveSlot}=packet;
@@ -313,7 +313,8 @@ function sendPmBriefings_(updatedTest, includeSlack, scheduledSlot, _unused, del
           lunch = pickLunchRecommendation_(props,route,day,effectiveSlot,lunchCatalog);
           if (lunch) {
             if (!lunchMate) {
-              const participants = lunchMateParticipants_(props, userRows);
+              // 정기 발송은 그날 첫 묶음 명단을 함께 쓴다. 시험 발송은 명단을 고정하지 않는다.
+              const participants = scheduledSlot ? lunchMateTodayParticipants_(props, userRows, day) : lunchMateParticipants_(props, userRows);
               lunchMate = {participants, plan:lunchMatePlan_(participants, lunchCatalog, day)};
             }
             lunch = applyLunchMate_(lunch, lunchMate.plan, route, day);
@@ -381,8 +382,10 @@ function formatBriefingBasis_(now, slackAsOf, day, withCalendar, preview) {
   const slack = String(slackAsOf || '');
   const slackTime = !slack ? '' : slack.slice(0, 10) === day ? slack.slice(11, 16) :
     slack.slice(5, 7) + '/' + slack.slice(8, 10) + ' ' + slack.slice(11, 16);
+  // Slack은 어느 채널을 읽었는지 작게 밝힌다(예: Slack #pm_team_channel 10:20).
+  const channels = (BRIEFING.slackChannels || []).map(name => '#' + name).join(' ');
   return '\n\n_' + (preview ? '미리보기 · ' : '') + (withCalendar ? '업무·회의 ' : '업무 ') +
-    Utilities.formatDate(now, BRIEFING.timezone, 'HH:mm') + (slackTime ? ' · Slack ' + slackTime : '') + ' 기준_';
+    Utilities.formatDate(now, BRIEFING.timezone, 'HH:mm') + (slackTime ? ' · Slack ' + (channels ? channels + ' ' : '') + slackTime : '') + ' 기준_';
 }
 
 // DM에는 짧은 사유만 쓴다. 완료본이 없거나 오래됐으면 마지막 수집 오류로 원인을 좁힌다.

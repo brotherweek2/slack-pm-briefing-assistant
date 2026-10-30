@@ -258,3 +258,15 @@ loadCheck(null)();
 assert.match(checkLogs.at(-1), /SLACK_BOT_TOKEN 없음/);
 assert.equal(fetched.length, 1, 'no Slack call without a bot token');
 console.log('Per-PM Slack routing checks passed');
+
+// 기준 줄: Slack을 어느 채널에서 읽었는지 작게 밝힌다(설정의 채널 목록). 목록이 없으면 채널 없이.
+{
+  const basisCtx = vm.createContext({BRIEFING: {timezone: 'Asia/Seoul', slackChannels: ['pm_team_channel']},
+    Utilities: {formatDate: () => '10:25'}});
+  vm.runInContext(fs.readFileSync('src/central-bot/01_슬랙DM발송.js', 'utf8'), basisCtx);
+  const line = basisCtx.formatBriefingBasis_(new Date(), '2026-10-30 10:20', '2026-10-30', true);
+  assert.equal(line, '\n\n_업무·회의 10:25 · Slack #pm_team_channel 10:20 기준_');
+  basisCtx.BRIEFING = {timezone: 'Asia/Seoul', slackChannels: ['pm_team_channel', 'other_channel']};
+  assert.match(vm.runInContext("formatBriefingBasis_(new Date(), '2026-10-30 10:20', '2026-10-30', true)", basisCtx), /Slack #pm_team_channel #other_channel 10:20/);
+  console.log('Basis line names the Slack channels');
+}

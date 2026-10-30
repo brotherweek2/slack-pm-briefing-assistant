@@ -178,8 +178,8 @@ function discoverBbpmThreads_(config, host, oldest, newest, budget) {
 
 function discoverBbpmThreadsBatch_(config, host, oldest, newest, budget) {
   const info = slackMentionReadApi_('conversations.info', { channel: config.channel }, config.token, budget);
-  if (!info.channel || info.channel.name !== 'pm_team_channel') {
-    throw new Error('자동 수집은 승인된 pm_team_channel 채널에 한정합니다.');
+  if (!info.channel || !BRIEFING.slackChannels.includes(info.channel.name)) {
+    throw new Error('자동 수집은 승인된 채널(' + BRIEFING.slackChannels.join(', ') + ')에 한정합니다.');
   }
   const cache = openBbpmDiscoveryCache_(config, host, oldest, newest);
   oldest = cache.state.oldest;
