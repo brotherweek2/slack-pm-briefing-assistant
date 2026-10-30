@@ -88,6 +88,13 @@ const evening = new Date(at('18:54'));
 assert.match(ctx.selfCalendarSection_({pm: 'PM C', id: 'U00000003'}, propsApi, '11:00', evening), /남은 회의 없음/);
 assert.equal(ctx.selfCalendarSection_({pm: 'PM C', id: 'U00000003'}, propsApi, '11:00', evening, new Date(at('11:00'))),
   '\n\n📅 *오늘 회의*\n• 16:00 Scrum', 'morning test shows meetings from 11:00');
+// 본인 시험·미리보기(allowStale): 갱신이 20분 넘게 지나도 오늘 마지막 갱신본을 보여 주고 기준 시각을 붙인다. 정기 발송은 그대로 지연 안내.
+const late = new Date(at('19:30'));
+assert.match(ctx.selfCalendarSection_({pm: 'PM C', id: 'U00000003'}, propsApi, '11:00', late), /회의 갱신 지연/);
+assert.equal(ctx.selfCalendarSection_({pm: 'PM C', id: 'U00000003'}, propsApi, '11:00', late, new Date(at('11:00')), true),
+  '\n\n📅 *오늘 회의*\n• 16:00 Scrum\n• 일정 기준 18:50 (마지막 갱신본)', 'self test uses the last sync of the day');
+assert.match(ctx.selfCalendarSection_({pm: 'PM C', id: 'U00000003'}, propsApi, '11:00', new Date(at('18:50') + 86400000), null, true),
+  /회의 갱신 지연/, 'yesterday sync is still treated as stale');
 props.CALENDAR_CONNECT_URL = 'https://script.google.com/home/projects/edit';
 assert.equal(ctx.calendarConnectLink_(propsApi, '연결하기'), '', 'editor or arbitrary URLs are never linked');
 props.CALENDAR_CONNECT_URL = url;

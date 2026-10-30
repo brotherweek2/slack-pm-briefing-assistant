@@ -80,7 +80,7 @@ function previewMyAfternoonBriefing() {
   const withCalendar = props.getProperty('ENABLE_CALENDAR_BRIEFING') === 'true';
   let meetings = '';
   if (withCalendar) {
-    try { meetings = buildLiveCalendarSection_(route, props, '14:00', now, null); }
+    try { meetings = buildLiveCalendarSection_(route, props, '14:00', now, null, true); }
     catch (error) { meetings = '\n\n📅 *오늘 회의*\n⚠️ 본인 회의 일정을 불러오지 못했습니다.'; }
   }
   const update = formatAfternoonUpdate_(route.pm, day, newRows, fresh, failure, formatBriefingBasis_(now, asOf, day, withCalendar, true), meetings);

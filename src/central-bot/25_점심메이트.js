@@ -8,7 +8,7 @@
  * 내부 함수 (직접 실행하지 않음)
  * - lunchMateOn_(props, slackId): 이 PM이 점심 메이트를 켰는지
  * - lunchMateParticipants_(props, userRows): 발송 TRUE이면서 버튼으로 켠 PM(오늘 연차인 PM 제외)
- * - lunchMateTodayParticipants_(props, userRows, day): 정기 발송용. 첫 묶음 명단을 그날 고정(묶음마다 메이트가 달라지지 않게)
+ * - lunchMateTodayParticipants_(props, userRows, day, readOnly): 정기 발송은 첫 묶음 명단을 그날 고정, 시험·미리보기는 그 명단을 읽기만
  * - lunchMateHash_(text): 날짜·ID로 섞기용 숫자를 만든다
  * - lunchMatePlan_(participants, catalog, day): 참여자 Slack ID → 오늘의 메이트 식당
  * - applyLunchMate_(selection, plan, route, day): 켠 사람의 식사 추천을 메이트 식당으로 바꾼다(가볍게 추천은 그대로)
@@ -36,13 +36,15 @@ function lunchMateParticipants_(props, userRows) {
 
 // 정기 발송은 4명씩 나눠 보내므로, 첫 묶음의 참여자 명단을 그날 고정해 모든 묶음이 같은 메이트를 본다.
 // 발송 도중 켜고 끈 것은 다음 날부터 반영된다(버튼 안내 문구와 같음).
-function lunchMateTodayParticipants_(props, userRows, day) {
+// readOnly: 본인 시험·미리보기. 오늘 고정 명단이 있으면 그대로 보여 주고, 없으면 현재 명단(저장하지 않음).
+function lunchMateTodayParticipants_(props, userRows, day, readOnly) {
   if (props.getProperty('ENABLE_LUNCH_MATE') !== 'true') return [];
   try {
     const saved = JSON.parse(props.getProperty(LUNCH_MATE.todayKey) || 'null');
     if (saved && saved.day === day && Array.isArray(saved.people)) return saved.people;
   } catch (error) { console.log('점심 메이트 오늘 명단 다시 계산'); }
   const people = lunchMateParticipants_(props, userRows);
+  if (readOnly) return people;
   try { props.setProperty(LUNCH_MATE.todayKey, JSON.stringify({day, people})); }
   catch (error) { console.log('점심 메이트 오늘 명단 저장 실패 | 이번 묶음은 현재 명단으로 계속'); }
   return people;

@@ -5,7 +5,7 @@
  * - PM 본인 연결 앱이 보낸 최신 회의만 쓴다. 중앙 계정으로 대신 조회하지 않는다.
  *
  * 내부 함수 (직접 실행하지 않음)
- * - buildLiveCalendarSection_(route, props, slot, now, viewFrom): PM·이메일·Slack 연결을 확인하고 현재 시각의 개인 회의 문안을 만든다
+ * - buildLiveCalendarSection_(route, props, slot, now, viewFrom, allowStale): PM·이메일·Slack 연결을 확인하고 현재 시각의 개인 회의 문안을 만든다
  * - calendarSectionTitle_(includeTomorrow): 오전은 오늘 회의, 오후는 오늘·내일을 담는 회의 제목을 만든다
  * - formatCalendarBriefing_(snapshot, includeTomorrow): 오늘 남은 회의와 선택적으로 내일 회의를 시간·제목·응답 상태로 표시한다
  * - calendarMeetingNotes_(snapshot, includeTomorrow): 회의 영역 끝 안내: 겹치는 회의, 응답하지 않은 초대
@@ -13,10 +13,11 @@
 
 // 실제 발송 직전에만 호출. 다른 PM에게 실행 계정의 개인 일정을 배포하지 않는다.
 // viewFrom: 아침 시험처럼 실제 발송 시각과 다른 회차를 볼 때, 회의 목록을 그 시각(11:00) 기준으로 자른다.
-function buildLiveCalendarSection_(route, props, slot, now, viewFrom) {
+// allowStale: 본인 시험·미리보기. 회의 갱신이 20분 넘게 지나도 오늘 받은 마지막 일정을 보여 준다.
+function buildLiveCalendarSection_(route, props, slot, now, viewFrom, allowStale) {
   if (props.getProperty('ENABLE_CALENDAR_BRIEFING') !== 'true') return '';
   // 개인 연결 모드에서는 중앙 실행 계정의 일정으로 대체하지 않는다.
-  if (props.getProperty('ENABLE_SELF_CALENDAR_PIPELINE') === 'true') return selfCalendarSection_(route, props, slot, now, viewFrom);
+  if (props.getProperty('ENABLE_SELF_CALENDAR_PIPELINE') === 'true') return selfCalendarSection_(route, props, slot, now, viewFrom, allowStale);
   // 예전 중앙 계정 조회 방식은 제거됨(10/23). 본인 연결 방식이 꺼져 있으면 회의 영역에 그 사실만 알린다.
   return '\n\n📅 *회의*\n• 개인 캘린더 연결 방식이 꺼져 있습니다 (ENABLE_SELF_CALENDAR_PIPELINE)';
 }

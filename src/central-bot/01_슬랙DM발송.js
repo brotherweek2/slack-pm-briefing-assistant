@@ -221,7 +221,7 @@ function sendPmBriefings_(updatedTest, includeSlack, scheduledSlot, _unused, del
         if (withCalendar) {
           try {
             meetings = buildLiveCalendarSection_(route, props, '14:00', new Date(),
-              forcedSlot ? new Date(Date.parse(day + 'T14:00:00+09:00')) : null);
+              forcedSlot ? new Date(Date.parse(day + 'T14:00:00+09:00')) : null, selfTest);
           } catch (error) {
             calendarFailure = true;
             meetings = '\n\n📅 *오늘 회의*\n⚠️ 본인 회의 일정을 불러오지 못했습니다. 실행 계정·캘린더 연결 설정을 확인해주세요.';
@@ -301,7 +301,7 @@ function sendPmBriefings_(updatedTest, includeSlack, scheduledSlot, _unused, del
       if (props.getProperty('ENABLE_CALENDAR_BRIEFING') === 'true') {
         try {
           message += buildLiveCalendarSection_(route, props, forcedSlot || scheduledSlot, new Date(),
-            forcedSlot ? new Date(Date.parse(Utilities.formatDate(new Date(), BRIEFING.timezone, 'yyyy-MM-dd') + 'T10:30:00+09:00')) : null);
+            forcedSlot ? new Date(Date.parse(Utilities.formatDate(new Date(), BRIEFING.timezone, 'yyyy-MM-dd') + 'T10:30:00+09:00')) : null, selfTest);
         } catch (error) {
           calendarFailure = true;
           message += '\n\n📅 *회의*\n⚠️ 본인 회의 일정을 불러오지 못했습니다. 실행 계정·캘린더 연결 설정을 확인해주세요.';
@@ -316,8 +316,8 @@ function sendPmBriefings_(updatedTest, includeSlack, scheduledSlot, _unused, del
           lunch = pickLunchRecommendation_(props,route,day,effectiveSlot,lunchCatalog);
           if (lunch) {
             if (!lunchMate) {
-              // 정기 발송은 그날 첫 묶음 명단을 함께 쓴다. 시험 발송은 명단을 고정하지 않는다.
-              const participants = scheduledSlot ? lunchMateTodayParticipants_(props, userRows, day) : lunchMateParticipants_(props, userRows);
+              // 정기 발송은 그날 첫 묶음 명단을 함께 쓴다. 시험 발송은 그 명단을 읽기만 한다(오늘 실제 DM과 같은 메이트).
+              const participants = lunchMateTodayParticipants_(props, userRows, day, !scheduledSlot);
               lunchMate = {participants, plan:lunchMatePlan_(participants, lunchCatalog, day)};
             }
             lunch = applyLunchMate_(lunch, lunchMate.plan, route, day);
@@ -469,7 +469,7 @@ function previewPersonalAssistantBriefing_(slot) {
   message += formatWeeklyOutlook_(route.pm, rows, day, slot);
   const withCalendar = props.getProperty('ENABLE_CALENDAR_BRIEFING') === 'true';
   if (withCalendar) {
-    try { message += buildLiveCalendarSection_(route, props, slot, now); }
+    try { message += buildLiveCalendarSection_(route, props, slot, now, null, true); }
     catch (error) { message += '\n\n📅 *회의*\n⚠️ 회의 일정을 불러오지 못했습니다. 캘린더 연결을 확인해주세요.'; }
   } else message += '\n\n📅 *회의*\n• 캘린더 연결 꺼짐';
   message += slackSection;
@@ -478,7 +478,7 @@ function previewPersonalAssistantBriefing_(slot) {
     try {
       const catalog = readLunchRestaurantCatalog_(bot);
       let lunch = pickLunchRecommendation_(props,route,day,slot,catalog);
-      const participants = lunchMateParticipants_(props, users), plan = lunchMatePlan_(participants, catalog, day);
+      const participants = lunchMateTodayParticipants_(props, users, day, true), plan = lunchMatePlan_(participants, catalog, day);
       if (lunch) lunch = applyLunchMate_(lunch, plan, route, day);
       message += formatLunchRecommendation_(lunch) + (lunch ? formatLunchMateLine_(route, plan, participants) : '');
     } catch (error) { console.log('점심 추천 미리보기 생략: 식당 목록·추천 이력 확인 필요'); }

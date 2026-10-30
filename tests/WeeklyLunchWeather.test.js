@@ -80,6 +80,10 @@ assert.ok(participants.every(p => replan.get(p.id) === plan.get(p.id)), 'same pl
 const firstBatch = JSON.stringify(ctx.lunchMateTodayParticipants_(props, users, '2026-10-23'));
 values.set('LUNCH_MATE_U0000000' + 5 + '0', 'on'); values.set('LUNCH_MATE_U0000000' + 0 + '0', 'off');
 assert.equal(JSON.stringify(ctx.lunchMateTodayParticipants_(props, users, '2026-10-23')), firstBatch, 'later batches reuse the first list');
+assert.equal(JSON.stringify(ctx.lunchMateTodayParticipants_(props, users, '2026-10-23', true)), firstBatch, 'self test reads the same list as the real DM');
+const savedToday = values.get('LUNCH_MATE_TODAY');
+ctx.lunchMateTodayParticipants_(props, users, '2026-10-25', true);
+assert.equal(values.get('LUNCH_MATE_TODAY'), savedToday, 'self test without a saved list does not save one');
 assert.equal(ctx.lunchMateTodayParticipants_(props, users, '2026-10-24').length, 5, 'next day picks up the changes');
 assert.ok(ctx.lunchMateTodayParticipants_(props, users, '2026-10-24').some(p => p.id === 'U0000000' + 5 + '0'));
 values.set('LUNCH_MATE_U0000000' + 5 + '0', 'off'); values.set('LUNCH_MATE_U0000000' + 0 + '0', 'on'); values.delete('LUNCH_MATE_TODAY');

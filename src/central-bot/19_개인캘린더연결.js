@@ -20,7 +20,7 @@
  * - selfCalendarExtras_(snapshot): 4개 캘린더 원천 조회 상태 검증
  * - selfCalendarStore_(props, create): 허용된 봇 전용 저장소만 개방
  * - calendarConnectLink_(props,label): 실제 배포 URL일 때만 연결 앱 Slack 링크를 만든다
- * - selfCalendarSection_(route, props, slot, now, viewFrom): 본인 수신자와 일치하는 최신 회의만 DM 문안으로 변환
+ * - selfCalendarSection_(route, props, slot, now, viewFrom, allowStale): 본인 수신자와 일치하는 최신 회의만 DM 문안으로 변환(시험·미리보기는 오늘 마지막 갱신본 허용)
  * - selfCalendarFormatSources_(state,snapshot,includeTomorrow): 회의 영역에 본인 일정·휴일만 표시하고 조회 실패 캘린더를 알린다
  * - selfCalendarFilterRoutes_(routes, props): 발송 TRUE 명단 중 본인 연결 완료 수신자만 통과
  * - selfCalendarSignature_(payload,key): 연결 앱 요청의 서명(HMAC)을 만든다
@@ -193,7 +193,7 @@ function calendarConnectLink_(props,label) {
     '<'+url+'|'+label+'>':'';
 }
 
-function selfCalendarSection_(route, props, slot, now, viewFrom) {
+function selfCalendarSection_(route, props, slot, now, viewFrom, allowStale) {
   // 회의 영역 제목은 calendarSectionTitle_을 쓴다(10:30 '오늘 회의', 17:00 '회의').
   const includeTomorrow = slot === '17:00' || (!slot && Number(Utilities.formatDate(now,'Asia/Seoul','HH')) >= 17);
   const title = calendarSectionTitle_(includeTomorrow);
@@ -208,7 +208,11 @@ function selfCalendarSection_(route, props, slot, now, viewFrom) {
   const state = JSON.parse(matches[0][1]);
   if (state.pm !== route.pm || state.slackId !== route.id) throw new Error('CALENDAR_ROUTE_CHANGED');
   if (!state.connected) return notConnected('개인 캘린더 연결 해제 상태');
-  if (!Number.isFinite(state.sentAt) || now.getTime()-state.sentAt > 20*60000 || state.sentAt > now.getTime()+30000) {
+  // 본인 시험·미리보기는 오늘 받은 마지막 일정을 그대로 쓰고, 몇 시 기준인지 한 줄 붙인다(연결 앱 갱신은 회차 직전에만 돈다).
+  const sameDay = Number.isFinite(state.sentAt) && state.sentAt <= now.getTime()+30000 &&
+    Utilities.formatDate(new Date(state.sentAt),'Asia/Seoul','yyyy-MM-dd') === Utilities.formatDate(now,'Asia/Seoul','yyyy-MM-dd');
+  const staleOk = allowStale && sameDay && now.getTime()-state.sentAt > 20*60000;
+  if (!staleOk && (!Number.isFinite(state.sentAt) || now.getTime()-state.sentAt > 20*60000 || state.sentAt > now.getTime()+30000)) {
     const last=Number.isFinite(state.sentAt)&&state.sentAt<=now.getTime()+30000?
       Utilities.formatDate(new Date(state.sentAt),'Asia/Seoul','MM/dd HH:mm'):'확인 불가';
     const refresh=calendarConnectLink_(props,'내 일정 갱신')||'연결 화면에서 새로고침';
@@ -223,7 +227,8 @@ function selfCalendarSection_(route, props, slot, now, viewFrom) {
   const snapshot = {day,now:from,tomorrowDay:Utilities.formatDate(new Date(tomorrowStart),'Asia/Seoul','yyyy-MM-dd'),
     today:events.filter(event => event.start < tomorrowStart),
     tomorrow:events.filter(event => event.start < tomorrowStart+86400000 && event.end > tomorrowStart)};
-  return selfCalendarFormatSources_(state,snapshot,includeTomorrow);
+  return selfCalendarFormatSources_(state,snapshot,includeTomorrow) +
+    (staleOk ? '\n• 일정 기준 '+Utilities.formatDate(new Date(state.sentAt),'Asia/Seoul','HH:mm')+' (마지막 갱신본)' : '');
 }
 
 // formatCalendarBriefing_은 '\n• …'로 시작하므로 줄을 이어 붙인다(빈 줄 없이 한 영역으로 유지).
