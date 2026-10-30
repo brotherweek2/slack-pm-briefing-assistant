@@ -71,7 +71,7 @@ function previewMyAfternoonBriefing() {
   const newRows = keys ? own.filter(row => !keys.includes(String(row[0]))) : [];
   let fresh = [], failure = '', asOf = '';
   try {
-    const snapshot = loadFreshBbpmSnapshot_(props, bot, now);
+    const snapshot = loadFreshBbpmSnapshot_(props, bot, now, 1440); // 미리보기는 하루 안의 최근 완료본
     let items = buildSlackDigestItems_(classifySlackSnapshot_(snapshot, [route]));
     items = attachSlackAuthorNames_(items, '', true);
     fresh = selectPersonalSlackItems_(route.pm, items, readSlackDigestSeen_(props, route.id), day, '14:00').filter(item => !item.previouslySent);

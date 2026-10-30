@@ -31,7 +31,7 @@
  * - runBbpmCollectStep_(props, now): 한 배치 수집 후 진행 상황 또는 완료본을 저장하고 마지막 오류 상태를 관리한다
  * - writeBbpmSnapshot_(bot, props, scan, groupId): 멘션이 있는 메시지만 두 전용 탭에 번갈아 저장하고 활성 완료본 속성을 바꾼다
  * - readBbpmSnapshot_(props, bot): 현재 활성 완료본의 메타정보와 메시지를 읽는다
- * - loadFreshBbpmSnapshot_(props, bot, now): 완료본 존재와 허용 경과 시간을 검사하고 오래된 자료를 차단한다
+ * - loadFreshBbpmSnapshot_(props, bot, now, maxAgeMinutes): 완료본 존재와 허용 경과 시간(기본 60분, 시험·미리보기는 하루)을 검사하고 오래된 자료를 차단한다
  * - classifySlackSnapshot_(snapshot, recipients): 완료본의 그룹 멤버·기간을 사용해 현재 수신자별로 분류한다
  */
 
@@ -530,7 +530,8 @@ function readBbpmSnapshot_(props, bot) {
 }
 
 // 발송용: 정해진 시간 안에 만든 완료본만 쓴다. 오래되거나 없으면 사유 코드와 함께 중지한다.
-function loadFreshBbpmSnapshot_(props, bot, now) {
+// maxAgeMinutes를 주면 그 시간까지 허용한다(본인 시험 발송: 수집 시간대 밖에서도 가장 최근 완료본을 쓴다).
+function loadFreshBbpmSnapshot_(props, bot, now, maxAgeMinutes) {
   const snapshot = readBbpmSnapshot_(props, bot);
   const fail = (code, message) => {
     const error = new Error(message);
@@ -539,7 +540,7 @@ function loadFreshBbpmSnapshot_(props, bot, now) {
     return error;
   };
   if (!snapshot) throw fail('NO_SNAPSHOT', '완료된 Slack 수집 결과가 없습니다. collectBbpmSnapshot으로 수집을 완료하세요.');
-  const maxAge = Number(props.getProperty('SLACK_SNAPSHOT_MAX_AGE_MINUTES') || BBPM_SNAPSHOT.maxAgeMinutes);
+  const maxAge = Number(maxAgeMinutes || props.getProperty('SLACK_SNAPSHOT_MAX_AGE_MINUTES') || BBPM_SNAPSHOT.maxAgeMinutes);
   if (!Number.isFinite(maxAge) || maxAge < 1 || maxAge > 1440) {
     throw fail('INVALID_CONFIG', 'Slack 완료본 허용 시간은 1~1440분 숫자여야 합니다.');
   }

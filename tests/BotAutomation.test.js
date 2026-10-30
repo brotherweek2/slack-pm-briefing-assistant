@@ -150,6 +150,8 @@ const fresh=vm.runInContext('loadFreshBbpmSnapshot_',ctx);
 const at=sec=>new Date(sec*1000);
 assert.equal(fresh(props,bot,at(nowSec+600+59*60)).meta.newest,nowSec+600);
 assert.throws(()=>fresh(props,bot,at(nowSec+600+61*60)),error=>error.code==='STALE'&&error.lastAsOf===nowSec+600);
+assert.equal(fresh(props,bot,at(nowSec+600+61*60),1440).meta.newest,nowSec+600,"self test and preview accept the latest snapshot of the day");
+assert.throws(()=>fresh(props,bot,at(nowSec+600+1441*60),1440),error=>error.code==="STALE","older than a day still blocked");
 values.set('SLACK_SNAPSHOT_MAX_AGE_MINUTES','90');
 assert.equal(fresh(props,bot,at(nowSec+600+61*60)).meta.newest,nowSec+600,'age limit is configurable');
 values.delete('SLACK_SNAPSHOT_MAX_AGE_MINUTES');

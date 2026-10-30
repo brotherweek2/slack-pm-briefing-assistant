@@ -222,7 +222,13 @@ ownEmail='own@example.test';context.refreshBotTasks=()=>({pmNames:['PM A','PM B'
 const realFormat=context.Utilities.formatDate;context.Utilities.formatDate=(d,tz,f)=>f==='HH'?'18':realFormat(d,tz,f);
 let calendarSlot=null;context.buildLiveCalendarSection_=(_r,_p,slot)=>{calendarSlot=slot;return '\nOWN CALENDAR';};
 const beforeMorning=sent.length;
+let selfSnapshotAge=null;const realFresh=context.loadFreshBbpmSnapshot_;
+context.loadFreshBbpmSnapshot_=(_p,_b,_n,maxAge)=>{selfSnapshotAge=maxAge;return {meta:{newest:1790000000}};};
+const markedBeforeSelf=digestMarked.length;
 context.sendMyMorningBriefingTest();
+assert.equal(selfSnapshotAge,1440,'self test uses the latest snapshot of the day');
+assert.equal(digestMarked.length,markedBeforeSelf,'self test does not mark Slack items as seen');
+context.loadFreshBbpmSnapshot_=realFresh;
 assert.equal(sent.length,beforeMorning+1);assert.equal(sent.at(-1).id,'U0000000002');
 assert.match(sent.at(-1).message,/오전 브리핑 드립니다!/);assert.doesNotMatch(sent.at(-1).message,/마무리 브리핑|PM B/);
 assert.equal(calendarSlot,'11:00','meeting section uses the morning slot');

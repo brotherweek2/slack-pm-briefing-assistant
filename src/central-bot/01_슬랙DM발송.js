@@ -177,7 +177,8 @@ function sendPmBriefings_(updatedTest, includeSlack, scheduledSlot, _unused, del
         if (props.getProperty('ENABLE_SLACK_MENTION_READ') !== 'true') {
           throw Object.assign(new Error('Slack 읽기 비활성'), { code: 'READ_DISABLED' });
         }
-        const snapshot = loadFreshBbpmSnapshot_(props, bot, new Date());
+        // 본인 시험은 수집 시간대(09:45~10:45 등) 밖에서도 하루 안의 가장 최근 완료본을 쓴다. 기준 줄에 그 시각이 보인다.
+        const snapshot = loadFreshBbpmSnapshot_(props, bot, new Date(), selfTest ? 1440 : undefined);
         slackAsOf = Utilities.formatDate(new Date(snapshot.meta.newest * 1000),
           BRIEFING.timezone, 'yyyy-MM-dd HH:mm');
         slackItems = buildSlackDigestItems_(classifySlackSnapshot_(snapshot, routes));
@@ -287,7 +288,8 @@ function sendPmBriefings_(updatedTest, includeSlack, scheduledSlot, _unused, del
         doneIds.push(route.id);
         log.appendRow([new Date(), slot, route.pm, ownTasks.map(row => row[0]).join(', '),
           packet.calendarFailure ? 'sent-calendar-unavailable' : slackFailure ? 'sent-sheet-only' : 'sent']);
-        if (includeSlack && !slackFailure && shownSlack.length) {
+        // 본인 시험에서 보여 준 Slack 항목은 '이미 봄'으로 표시하지 않는다(정기 DM에서 빠지지 않게).
+        if (includeSlack && !slackFailure && !selfTest && shownSlack.length) {
           try { markSlackDigestSeen_(props, route.id, seen, shownSlack, slackItems.filter(item => item.pm === route.pm)); }
           catch (error) { console.log('Slack 발송 성공, 멘션 표시 이력 저장 실패 | DM 재전송하지 않음'); }
         }
@@ -350,7 +352,7 @@ function sendPmBriefings_(updatedTest, includeSlack, scheduledSlot, _unused, del
         try { markBriefingPhraseSent_(props,route,phrase); }
         catch (error) { console.log('한마디 발송 성공, 선택 이력 저장 실패 | 반복 방지 설정 확인 필요'); }
       }
-      if (includeSlack && !slackFailure) {
+      if (includeSlack && !slackFailure && !selfTest) {
         try { markSlackDigestSeen_(props, route.id, seen, shownSlack, slackItems.filter(item => item.pm === route.pm)); }
         catch (error) { console.log('Slack 발송 성공, 멘션 표시 이력 저장 실패 | DM 재전송하지 않음'); }
       }
@@ -452,7 +454,7 @@ function previewPersonalAssistantBriefing_(slot) {
     if (props.getProperty('ENABLE_SLACK_MENTION_READ') !== 'true') {
       throw Object.assign(new Error('Slack 읽기 비활성'), {code:'READ_DISABLED'});
     }
-    const snapshot = loadFreshBbpmSnapshot_(props, bot, now);
+    const snapshot = loadFreshBbpmSnapshot_(props, bot, now, 1440); // 미리보기는 하루 안의 최근 완료본
     let items = buildSlackDigestItems_(classifySlackSnapshot_(snapshot, [route]));
     // 미리보기는 저장된 작성자 이름만 쓴다(Slack 조회·속성 저장 없음).
     try { items = attachSlackAuthorNames_(items, '', true); }
