@@ -92,6 +92,7 @@ function handleSlackInteraction_(e) {
     if (!expected || payload.token !== expected || payload.type !== 'block_actions') return ok();
     const action = (payload.actions || [])[0] || {};
     if (String(action.action_id || '').startsWith('feedback_')) { handleFeedbackAction_(payload, action, props); return ok(); }
+    if (/^task_(done|undo)_/.test(String(action.action_id || ''))) { handleTaskDoneAction_(payload, action, props); return ok(); }
     const userId = String(payload.user && payload.user.id || '');
     if (action.action_id !== LUNCH_MATE.actionId || !['on','off'].includes(action.value) || !/^[UW][A-Z0-9]{8,}$/.test(userId)) return ok();
     // 누른 사람 본인의 설정만 바꾼다(다른 사람 것을 바꿀 수 없음).

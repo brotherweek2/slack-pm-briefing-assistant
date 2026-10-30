@@ -212,6 +212,20 @@ assert.throws(() => collectTest({getSheetByName:name => name === 'HT 테스트�
     ['ko_KR-en_US', '301', '2026-11-02', 9],
     ['ko_KR-en_US', '302', '2026-10-31', 11],
   ], 'G·I열 배치 요약을 읽고 중복 칸은 한 번만');
+  // 기존 grid의 '201 · 1/3'은 2027년으로 추정(연말·연초에만 생김). 형식이 다른 칸은 없음.
+  assert.equal(boards[0].yearGuessed, 1, 'year inferred across the year boundary is counted');
+  assert.equal(boards[0].malformed, 0);
+  // 일부 칸만 형식이 다르면(날짜 표기·구분자 변경) 그 칸 수를 센다. 정상 칸은 그대로 읽는다.
+  const partGrid = [
+    row({0: '가나다 · 언어쌍 관리'}),
+    row({6: '310 · 10/30 · 5개 · 최대 1배치', 8: '311 · 10월 31일 · 5개 · 최대 1배치', 10: '312 / 11/2 / 7개 / 최대 2배치'}),
+    row({0: 'ko_KR-en_US', 6: 'test.web\nA'}),
+    row({}), row({}), row({}),
+  ];
+  const part = ctx.collectHaCvPmDashboards_({getSheets: () => [tab('가나다', partGrid)]})[0];
+  assert.deepEqual(plain(part.records.map(r => r.projectId)), ['310']);
+  assert.equal(part.malformed, 2, 'two project-like cells in a different format');
+  assert.equal(part.yearGuessed, 0);
   // 큰 탭은 한 번에 5만 칸 미만으로 나눠 읽는다. 조각 경계에 요약 줄(위)과 머리글(아래)이 갈려도 결과가 같아야 한다.
   const reads = [];
   const counted = rows => Object.assign(tab('가나다', rows), {getRange: (r, c, h, w) => { reads.push(h * w);

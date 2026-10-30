@@ -1,5 +1,5 @@
 /**
- * 17. 운영점검 — 실행 계정 고정, 저장량 점검, 발송 기록 90일 보관, 정확도 점검
+ * 17. 운영점검 — 실행 계정 고정, 저장량 점검, 발송 기록 15일 보관, 정확도 점검
  *
  * 알아둘 것
  * - 원천 시트·수신자·트리거·DM에는 영향이 없다.
@@ -7,11 +7,11 @@
  * 직접 실행 (🔍 조회만 · ⚠️ 보내거나 바꿈 · ⏰ 자동 호출)
  * - 🔍 previewBriefingHealth(): 계정 고정 여부·속성 저장량·봇 탭 행 수 확인
  * - ⚠️ pinBriefingExecutor(): 회사 계정인지 확인하고 실행 계정을 고정한다(다른 계정이 실행하면 봇 시트 접근을 막음)
- * - ⚠️ compactBriefingSendLog(): 지정 봇 파일의 BOT_SEND_LOG에서 90일 전 기록만 제거
+ * - ⚠️ compactBriefingSendLog(): 지정 봇 파일의 BOT_SEND_LOG에서 15일 전 기록만 제거
  * - 🔍 previewBriefingAccuracy(): 본인(PILOT_PM_NAME) 기준으로 봇이 본 업무와 Slack 글을 모두 나열한다
  *
  * 내부 함수 (직접 실행하지 않음)
- * - retainBriefingSendLog_(sheet, rows, day): 브리핑 실행 잠금 안에서 90일 이력을 보존한다
+ * - retainBriefingSendLog_(sheet, rows, day): 브리핑 실행 잠금 안에서 최근 15일 기록만 남긴다
  */
 function previewBriefingHealth() {
   const props = PropertiesService.getScriptProperties();
@@ -29,7 +29,7 @@ function previewBriefingHealth() {
     const sheet = bot.getSheetByName(name);
     console.log(name + ': ' + (sheet ? Math.max(0, sheet.getLastRow() - 1) + '행' : '미생성'));
   });
-  console.log('일별 조회·발송 로그 자동 보관 90일 | compactBriefingSendLog 수동 정리도 가능');
+  console.log('발송 로그 자동 보관 15일 · 일별 조회 기록 90일 | compactBriefingSendLog 수동 정리도 가능');
   console.log('조회만 수행 | 시트·속성·트리거 변경·Slack 발송 없음');
 }
 
@@ -53,12 +53,14 @@ function compactBriefingSendLog() {
     const rows = readBotRows_(sheet, BOT_WORKBOOK.logHeaders.length);
     const today = Utilities.formatDate(new Date(), BRIEFING.timezone, 'yyyy-MM-dd');
     const keep = retainBriefingSendLog_(sheet, rows, today);
-    console.log('BOT_SEND_LOG: 90일 전 ' + (rows.length - keep.length) + '행 정리 | 보존 ' + keep.length + '행 | Slack 발송 없음');
+    console.log('BOT_SEND_LOG: ' + SEND_LOG_KEEP_DAYS + '일 전 ' + (rows.length - keep.length) + '행 정리 | 보존 ' + keep.length + '행 | Slack 발송 없음');
   } finally {lock.releaseLock();}
 }
 
+// 발송 로그는 최근 15일만 남긴다(10/30 사용자 결정). 14:00 비교·직전 회차 확인·중복 방지는 며칠 안의 기록만 쓴다.
+const SEND_LOG_KEEP_DAYS = 15;
 function retainBriefingSendLog_(sheet, rows, day) {
-  const cutoff = new Date(new Date(day + 'T12:00:00Z').getTime() - 89 * 86400000).toISOString().slice(0, 10);
+  const cutoff = new Date(new Date(day + 'T12:00:00Z').getTime() - (SEND_LOG_KEEP_DAYS - 1) * 86400000).toISOString().slice(0, 10);
   const keep = rows.filter(row => {
     const raw = row[0];
     const date = Object.prototype.toString.call(raw) === '[object Date]' && !isNaN(raw.getTime())

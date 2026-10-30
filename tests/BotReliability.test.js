@@ -78,3 +78,6 @@ const remaining=ctx.retainBriefingSendLog_(logSheet,[['2026-01-01'],['2026-10-20
 assert.equal(remaining.length,2,'old send log pruned; today and unknown dates preserved');
 assert.equal(kept[0][0],'2026-10-20');
 assert.equal(cleared.row,4,'only leftover tail is cleared after retained rows written');
+// 15일 보관: 오늘 포함 15일째(10/06)는 남고 16일째(10/05)는 지운다.
+const edge=ctx.retainBriefingSendLog_(logSheet,[['2026-10-05'],['2026-10-06'],['2026-10-20']],'2026-10-20');
+assert.equal(edge.map(r=>r[0]).join(','),'2026-10-06,2026-10-20','send log keeps the last 15 days');

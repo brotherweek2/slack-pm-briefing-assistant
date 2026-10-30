@@ -22,7 +22,7 @@ const ctx=vm.createContext({briefingLeaveRoutes_:()=>[],Date:FixedDate,console:{
   escapeSlack_:s=>String(s),postSlackDm_:(_token,id,message)=>{
     if(sendFailure)throw Error('synthetic post failure');posts.push({id,message});phase='post-success';
   }});
-for(const f of ['16_식당목록.js','15_점심추천.js','01_슬랙DM발송.js','17_운영점검.js'])vm.runInContext(fs.readFileSync('src/central-bot/'+f,'utf8'),ctx);
+for(const f of ['16_식당목록.js','15_점심추천.js','01_슬랙DM발송.js','17_운영점검.js','31_완료버튼.js'])vm.runInContext(fs.readFileSync('src/central-bot/'+f,'utf8'),ctx);
 require('./test-briefing-blocks.cjs')(ctx);
 ctx.sendPmBriefings_(true,false,'11:00');
 assert.equal(posts.length,1);assert.match(posts[0].message,/WORK 11:00/);assert.match(posts[0].message,/점심 추천/);

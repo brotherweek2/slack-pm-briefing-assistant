@@ -22,7 +22,7 @@ const ctx = vm.createContext({ briefingLeaveRoutes_: () => [],
   BRIEFING_LUNCH_REMOVED_NAMES: [],
 });
 let fetchReply = () => ({getResponseCode: () => 500, getContentText: () => ''});
-for (const f of ['02_캘린더일정.js', '05_업무시트연결.js', '07_업무브리핑.js', '24_주간안내.js', '25_점심메이트.js', '26_내일날씨.js']) {
+for (const f of ['02_캘린더일정.js', '05_업무시트연결.js', '07_업무브리핑.js', '24_주간안내.js', '25_점심메이트.js', '26_내일날씨.js', '31_완료버튼.js']) {
   vm.runInContext(fs.readFileSync('src/central-bot/' + f, 'utf8'), ctx, {filename: f});
 }
 

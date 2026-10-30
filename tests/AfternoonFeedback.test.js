@@ -43,7 +43,14 @@ const day = new Date('2026-10-26T10:31:00+09:00');
 const log = [[day, 'scheduled-11:00', 'PM A', 'A|1, B|2', 'sent'], [day, 'scheduled-11:00', 'PM B', 'C|3', 'sent'],
   [new Date('2026-10-23T10:31:00+09:00'), 'scheduled-11:00', 'PM C', 'Z|9', 'sent']];
 assert.equal(JSON.stringify(ctx.morningTaskKeys_(log, '2026-10-26', 'PM A')), '["A|1","B|2"]');
-assert.equal(ctx.morningTaskKeys_(log, '2026-10-26', 'PM C'), null, 'yesterday does not count');
+// 오전 DM이 실패해 오늘 기록이 없으면 직전 정기 DM(7일 안)과 비교한다. 더 오래됐거나 시험 발송뿐이면 비교하지 않는다.
+assert.equal(JSON.stringify(ctx.morningTaskKeys_(log, '2026-10-26', 'PM C')), '["Z|9"]', 'falls back to the last scheduled DM');
+const fallbackLog = [[new Date('2026-10-23T17:01:00+09:00'), 'scheduled-17:00', 'PM D', 'K|1', 'sent'],
+  [new Date('2026-10-23T10:31:00+09:00'), 'scheduled-11:00', 'PM D', 'OLD|1', 'sent'],
+  [new Date('2026-10-26T10:31:00+09:00'), 'manual-self-morning-test', 'PM D', 'T|1', 'sent'],
+  [new Date('2026-10-15T17:01:00+09:00'), 'scheduled-17:00', 'PM E', 'Q|1', 'sent']];
+assert.equal(JSON.stringify(ctx.morningTaskKeys_(fallbackLog, '2026-10-26', 'PM D')), '["K|1"]', 'latest scheduled one, tests ignored');
+assert.equal(ctx.morningTaskKeys_(fallbackLog, '2026-10-26', 'PM E'), null, 'older than 7 days is not used');
 assert.equal(ctx.briefingSlotLabel_('11:00'), '10:30 오전'); assert.equal(ctx.briefingSlotLabel_('14:00'), '14:00 오후');
 const at = t => new Date('2026-10-26T' + t + ':00+09:00');
 assert.equal(ctx.currentBriefingSlot_(at('10:20')), '11:00'); assert.equal(ctx.currentBriefingSlot_(at('14:05')), '14:00'); assert.equal(ctx.currentBriefingSlot_(at('17:03')), '17:00');

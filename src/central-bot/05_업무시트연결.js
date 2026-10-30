@@ -102,6 +102,7 @@ function refreshBotTasksForRound_(props) {
   try { cached = JSON.parse(props.getProperty('BOT_TASKS_REFRESHED') || 'null'); } catch (_) {}
   if (cached && cached.day === day && Date.now() - cached.at < 15 * 60000 && Array.isArray(cached.pmNames)) {
     return {pmNames:cached.pmNames, emptyPmTabs:cached.emptyPmTabs || [], sourceFailures:cached.sourceFailures || [],
+      malformedPmTabs:cached.malformedPmTabs || [], yearGuessed:cached.yearGuessed || 0,
       keptPrefixes:cached.keptPrefixes || [], reused:true};
   }
   const summary = refreshBotTasks();
@@ -109,6 +110,7 @@ function refreshBotTasksForRound_(props) {
   const missing = [...new Set((summary.missingPmTabs || []).concat(cached && cached.day === day ? cached.missingPmTabs || [] : []))];
   try { props.setProperty('BOT_TASKS_REFRESHED', JSON.stringify({day, at:Date.now(), pmNames:summary.pmNames,
     emptyPmTabs:summary.emptyPmTabs || [], missingPmTabs:missing, sourceFailures:summary.sourceFailures || [],
+    malformedPmTabs:summary.malformedPmTabs || [], yearGuessed:summary.yearGuessed || 0,
     keptPrefixes:summary.keptPrefixes || []})); }
   catch (error) { console.log('업무 갱신 시각 저장 생략 | ' + error.message); }
   return summary;
@@ -165,11 +167,15 @@ function refreshBotTasks_({ bot, sourceId }) {
   // 담당 탭은 찾았는데 프로젝트를 하나도 못 읽으면 양식 변경일 가능성이 크다. 0건이 정상과 구분되도록 관리자 요약에 알린다.
   const emptyPmTabs = pmDashboards.filter(item => !item.records.length).map(item => item.pm);
   if (emptyPmTabs.length) console.warn('담당 탭에서 프로젝트를 하나도 읽지 못함(양식 확인 필요): ' + emptyPmTabs.join(', '));
+  // 일부 칸만 양식이 다른 경우(그 칸의 종료 임박·어뷰저가 조용히 빠짐)와 연말·연초 연도 추정 건수.
+  const malformedPmTabs = pmDashboards.filter(item => item.malformed && item.records.length).map(item => item.pm + ' ' + item.malformed + '칸');
+  if (malformedPmTabs.length) console.warn('담당 탭에서 형식이 다른 프로젝트 칸: ' + malformedPmTabs.join(', '));
+  const yearGuessed = pmDashboards.reduce((total, item) => total + (item.yearGuessed || 0), 0);
   console.log('PM Review 미완료 1차 검수 (기한 경과·예정·미정) ' + pmReviews.length +
     '건, 테스트지 검토 미완료 ' + testReviews.length + '건');
   return { tasks: detected.length + upcoming.length + abuse.length + pmReviews.length + testReviews.length,
     unassigned: collected.unassigned.length + headsUp.unassigned.length,
-    pmNames, emptyPmTabs, missingPmTabs, sourceFailures: failures.map(item => item.label + ': ' + item.message),
+    pmNames, emptyPmTabs, missingPmTabs, malformedPmTabs, yearGuessed, sourceFailures: failures.map(item => item.label + ': ' + item.message),
     keptPrefixes: [...new Set(failures.flatMap(item => item.prefixes))] };
 }
 

@@ -52,6 +52,7 @@ const context = vm.createContext({ briefingLeaveRoutes_: () => [],
   escapeSlack_: value => String(value),
 });
 vm.runInContext(fs.readFileSync('src/central-bot/07_업무브리핑.js', 'utf8'), context);
+vm.runInContext(fs.readFileSync('src/central-bot/31_완료버튼.js', 'utf8'), context);
 vm.runInContext(fs.readFileSync('src/central-bot/01_슬랙DM발송.js', 'utf8'), context);
 require('./test-briefing-blocks.cjs')(context);
 vm.runInContext(fs.readFileSync('src/central-bot/17_운영점검.js', 'utf8'), context);
@@ -243,6 +244,7 @@ const tokenContext = token => vm.createContext({
 });
 const loadCheck = token => {
   const ctx = tokenContext(token);
+  vm.runInContext(fs.readFileSync('src/central-bot/31_완료버튼.js', 'utf8'), ctx);
   vm.runInContext(fs.readFileSync('src/central-bot/01_슬랙DM발송.js', 'utf8'), ctx);
   require('./test-briefing-blocks.cjs')(ctx);
   return vm.runInContext('checkSlackBotToken', ctx);

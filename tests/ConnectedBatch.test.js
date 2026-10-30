@@ -23,12 +23,12 @@ function fixture(){
   readSlackDigestSeen_:()=>[],selectPersonalSlackItems_:()=>[],formatPersonalSlackDigest_:()=>'',attachSlackToWorkLines_:(text,items)=>({text,rest:items,attached:0}),attachSlackAuthorNames_:items=>items,
   notifyAdminRoundSummary_:(slot,info)=>admin.push({slot,info}),adminInfoFromJob_:job=>({state:job.state,total:job.total,pendingIds:job.pendingIds,failedIds:job.failedIds||[],failures:job.failures||{},failed:job.failed}),
   retainBriefingSendLog_:(_l,rows)=>rows,markSlackDigestSeen_:()=>{},maskPilotId_:()=> 'masked',
-  postSlackDm_:(_token,id,message,slot)=>{
+  postSlackDm_:(_token,id,message,slot,blocks)=>{
     if(rateOnce){rateOnce=false;throw Object.assign(Error('rate'),{code:'SLACK_RATE_LIMIT',retryAfterMs:90000});}
     if(ambiguous){ambiguous=false;throw Object.assign(Error('uncertain'),{code:'DM_RESULT_UNCERTAIN'});}
-    sent.push({id,message,slot});clock+=sendDelay;
+    sent.push({id,message,slot,blocks});clock+=sendDelay;
   }});
- for(const file of ['01_슬랙DM발송.js','20_이어보내기.js'])vm.runInContext(fs.readFileSync('src/central-bot/'+file,'utf8'),ctx);
+ for(const file of ['01_슬랙DM발송.js','20_이어보내기.js','31_완료버튼.js'])vm.runInContext(fs.readFileSync('src/central-bot/'+file,'utf8'),ctx);
  require('./test-briefing-blocks.cjs')(ctx);
  return {ctx,sent,users,values,logs,admin,job:()=>JSON.parse(values.get('CONNECTED_SEND_JOB')||'null'),triggers:()=>triggers,
   advance:ms=>clock+=ms,busy:value=>held=value,rate:()=>rateOnce=true,ambiguous:()=>ambiguous=true,
@@ -127,4 +127,22 @@ console.log('25-recipient actual sender/worker integration: 4-per-batch, fixed c
   h.ctx.assertFreshPilotTasks_=g.ctx.assertFreshPilotTasks_;h.ctx.startConnectedBriefingRound_('11:00');
   assert.ok(!h.sent.some(s=>s.id==='U00000001'),'without a reported read failure, stale tasks still block that PM');
   console.log('Kept tasks from an unreadable sheet do not block the DM');
+}
+
+// ✅ 완료 버튼: 오늘 완료 표시한 업무 종류는 그 PM의 DM에서 빠지고 안내 한 줄이 붙는다. 남은 종류만 버튼이 붙는다.
+{
+  const g=fixture();
+  const task=key=>[key,'PM 0'].concat(Array(10).fill(''),[true]);
+  g.ctx.requireBotSheet_=(b,n)=>n==='BOT_TASKS'?{rows:[task('PM_REVIEW|1'),task('TEST_REVIEW|2')]}:n==='BOT_USERS'?{rows:g.users}:{rows:[],appendRow:()=>{}};
+  let shownRows=null;
+  g.ctx.formatPersonalWorkBriefing_=(pm,rows)=>{if(pm==='PM 0')shownRows=rows.filter(r=>r[1]==='PM 0').map(r=>r[0]);return '📌 *오늘 확인할 업무*\n• WORK '+pm;};
+  g.values.set('SLACK_VERIFICATION_TOKEN','verify-test');
+  g.values.set('TASK_DONE_U00000001',JSON.stringify({day:'2026-10-21',groups:['PM_REVIEW']}));
+  g.ctx.startConnectedBriefingRound_('11:00');
+  const mine=g.sent.find(s=>s.id==='U00000001');
+  assert.deepEqual(JSON.parse(JSON.stringify(shownRows)),['TEST_REVIEW|2'],'done type removed for this PM');
+  assert.match(mine.message,/✅ 오늘 완료 표시: 1차 검수/);
+  const actions=(mine.blocks||[]).find(b=>b.block_id==='task_done');
+  assert.equal(JSON.stringify(actions.elements.map(e=>e.action_id)),'["task_done_TEST_REVIEW","task_undo_PM_REVIEW"]','remaining types get done buttons, the done type gets an undo button');
+  console.log('Done task types are hidden for the rest of the day with a note and buttons');
 }

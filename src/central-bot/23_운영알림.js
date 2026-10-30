@@ -135,6 +135,14 @@ function buildAdminRoundSummary_(props, slot, info, now) {
   try {
     const refreshed = JSON.parse(props.getProperty('BOT_TASKS_REFRESHED') || 'null');
     const empty = refreshed && refreshed.day === day && Array.isArray(refreshed.emptyPmTabs) ? refreshed.emptyPmTabs : [];
+    const malformed = refreshed && refreshed.day === day && Array.isArray(refreshed.malformedPmTabs) ? refreshed.malformedPmTabs : [];
+    if (malformed.length) {
+      lines.push('• ⚠️ 담당 탭 일부 칸 형식 다름: ' + names(malformed.map(escapeSlack_)) + ' (그 칸의 업무는 빠짐)');
+      todo.push('위 담당 탭에서 "번호 · M/D · 수량 · 최대 N배치" 형식과 다른 프로젝트 칸이 있는지 확인하세요(언어쌍 블록 머리글·날짜 포함).');
+    }
+    // 연말·연초에만: 목표 종료일 연도를 올해가 아닌 해로 추정한 프로젝트가 있으면 알린다.
+    const guessed = refreshed && refreshed.day === day ? Number(refreshed.yearGuessed) || 0 : 0;
+    if (guessed) lines.push('• 📅 연도 추정 ' + guessed + '건: 담당 탭 날짜에 연도가 없어 올해가 아닌 해로 봤어요(연말·연초). 종료 임박이 맞는지 한 번 확인하세요');
     if (empty.length) {
       lines.push('• ⚠️ 담당 탭 형식 확인 필요: ' + names(empty.map(escapeSlack_)) + ' (프로젝트 0건)');
       todo.push('위 담당 탭의 프로젝트 칸 형식("번호 · M/D · 수량 · 최대 N배치")이 바뀌었는지 inspectOriginalSheetStructure로 확인하세요. 그동안 종료 임박·어뷰저가 빠집니다.');
@@ -279,7 +287,7 @@ function cleanupBotProperties_(props, rows) {
   gone.forEach(id => {
     const route = {id};
     ['SLACK_DIGEST_SEEN_' + id, briefingPhraseStateKey_(route, '11:00'), briefingPhraseStateKey_(route, '17:00'),
-      lunchRecommendationStateKey_(route, ''), lunchRecommendationStateKey_(route, 'light')]
+      lunchRecommendationStateKey_(route, ''), lunchRecommendationStateKey_(route, 'light'), TASK_DONE.prefix + id]
       .filter(key => keys.includes(key)).forEach(key => { props.deleteProperty(key); removed++; });
   });
   return removed;

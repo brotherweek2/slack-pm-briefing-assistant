@@ -33,6 +33,7 @@ function fixture(extra) {
     lunchRecommendationStateKey_: (route, kind) => 'LUNCH_CHOICE_' + route.id + (kind === 'light' ? '_LIGHT' : ''),
   });
   vm.runInContext(fs.readFileSync('src/central-bot/29_오후업데이트.js', 'utf8'), ctx); // 회차 표시 이름·실제 시각
+  vm.runInContext(fs.readFileSync('src/central-bot/31_완료버튼.js', 'utf8'), ctx);
   vm.runInContext(fs.readFileSync('src/central-bot/23_운영알림.js', 'utf8'), ctx);
   return {ctx, props, values, dms, logs};
 }
@@ -176,5 +177,12 @@ console.log('Admin round summary, hints, once-per-slot, cleanup and start-failur
   const st = failedSource.ctx.buildAdminRoundSummary_(failedSource.props, '11:00', {state: 'complete', total: 1, pendingIds: [], failedIds: []}, new Date(at('10:40'))).text;
   assert.match(st, /⚠️ 업무 시트 읽기 실패\(직전 결과 유지\): 테스트지 관리: 탭이 없습니다/);
   assert.match(st, /⚠️ 담당 탭이 사라짐: PM C/);
+  const partial = fixture({BOT_TASKS_REFRESHED: JSON.stringify({day: '2026-10-23', at: 0, pmNames: ['PM A'], emptyPmTabs: [],
+    malformedPmTabs: ['PM A 2칸'], yearGuessed: 3})});
+  partial.ctx.selfCalendarRegistry_ = () => [];
+  const pt = partial.ctx.buildAdminRoundSummary_(partial.props, '11:00', {state: 'complete', total: 1, pendingIds: [], failedIds: []}, new Date(at('10:40'))).text;
+  assert.match(pt, /⚠️ 담당 탭 일부 칸 형식 다름: PM A 2칸/);
+  assert.match(pt, /📅 연도 추정 3건/);
+  assert.doesNotMatch(st, /연도 추정|일부 칸 형식/, 'no lines when nothing is flagged');
   console.log('Empty PM tabs and unreadable work sheets are flagged in the round summary');
 }

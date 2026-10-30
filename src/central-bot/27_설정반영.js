@@ -30,6 +30,7 @@ const BOT_SETTINGS = Object.freeze({tab:'BOT_SETTINGS', headers:['setting', 'val
     ORIGINAL_PM_REVIEW_SPREADSHEET_ID:{note:'원본 PM Review 시트 주소. 반영 후 시트에서 자동 삭제', secret:true},
     ORIGINAL_TEST_MANAGEMENT_SPREADSHEET_ID:{note:'원본 테스트지 관리 시트 주소. 반영 후 시트에서 자동 삭제', secret:true},
     ENABLE_PERSONAL_LEAVE_SKIP:{note:'false면 연차인 PM에게도 정기 DM 보내기'},
+    ENABLE_TASK_DONE:{note:'false면 DM 업무 줄의 ✅ 완료 버튼 끄기'},
   }});
 
 function botSettingsSheet_(props, create) {

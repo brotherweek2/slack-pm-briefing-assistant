@@ -202,6 +202,9 @@ function sendPmBriefings_(updatedTest, includeSlack, scheduledSlot, _unused, del
       // 이번에 읽지 못해 직전 결과로 둔 업무 종류는 오늘 갱신 검사에서 뺀다(그 PM의 DM이 통째로 막히지 않게).
       const kept = summary.keptPrefixes || [];
       assertFreshPilotTasks_(ownTasks.filter(row => !kept.some(prefix => String(row[0]).startsWith(prefix))), day);
+      // ✅ 완료 버튼(31번): 오늘 완료 표시한 업무 종류는 남은 회차에서 뺀다. 발송 기록에도 보여 준 업무만 남긴다.
+      const done = taskDoneEnabled_(props) ? taskDoneGroups_(props, route.id, day) : [];
+      const shownTasks = withoutDoneTasks_(ownTasks, route.pm, done);
       const seen = includeSlack && !slackFailure ? readSlackDigestSeen_(props, route.id) : [];
       const effectiveSlot = forcedSlot || (scheduledSlot === '14:00' ? '14:00' : scheduledSlot === '17:00' || !scheduledSlot &&
         Number(Utilities.formatDate(new Date(), BRIEFING.timezone, 'HH')) >= 17 ? '17:00' : '11:00');
@@ -209,7 +212,7 @@ function sendPmBriefings_(updatedTest, includeSlack, scheduledSlot, _unused, del
       if (effectiveSlot === '14:00') {
         // 14:00: 오전 이후 새로 생긴 업무·Slack만. 없으면 한 줄 인사(29번 파일).
         const keys = morningTaskKeys_(prior, day, route.pm);
-        const newRows = keys ? ownTasks.filter(row => !keys.includes(String(row[0]))) : [];
+        const newRows = keys ? shownTasks.filter(row => !keys.includes(String(row[0]))) : [];
         const fresh = ownSlack.filter(item => !item.previouslySent);
         // 14:00에도 오늘 남은 회의를 붙인다. 회의를 못 읽어도 업무·Slack은 보낸다.
         const withCalendar = props.getProperty('ENABLE_CALENDAR_BRIEFING') === 'true';
@@ -226,11 +229,12 @@ function sendPmBriefings_(updatedTest, includeSlack, scheduledSlot, _unused, del
         }
         const update = formatAfternoonUpdate_(route.pm, day, newRows, fresh, slackFailure,
           formatBriefingBasis_(new Date(), slackAsOf, day, withCalendar) + sourceNote, meetings);
-        return {route, ownTasks, message:update.text, seen, shownSlack:fresh, slackSection:'', effectiveSlot, afternoon:true,
-          quiet:update.quiet, calendarFailure};
+        return {route, ownTasks:shownTasks, message:update.text, seen, shownSlack:fresh, slackSection:'', effectiveSlot, afternoon:true,
+          quiet:update.quiet, calendarFailure, buttonRows:newRows, doneGroups:done};
       }
       const shownSlack = includeSlack ? ownSlack : [];
-      let message = formatPersonalWorkBriefing_(route.pm, rows, day, trends[route.pm], effectiveSlot);
+      let message = formatPersonalWorkBriefing_(route.pm, withoutDoneTasks_(rows, route.pm, done), day, trends[route.pm], effectiveSlot) +
+        taskDoneNote_(done);
       let slackSection = '';
       if (includeSlack) {
         // 시트 업무와 같은 종류의 Slack 항목은 업무 줄 아래로 옮긴다.
@@ -244,7 +248,7 @@ function sendPmBriefings_(updatedTest, includeSlack, scheduledSlot, _unused, del
       // 기준 시각은 정보 영역 끝에 한 줄로 둔다. 점심·한마디는 그 아래에 붙는다.
       slackSection += formatBriefingBasis_(new Date(), slackAsOf, day,
         props.getProperty('ENABLE_CALENDAR_BRIEFING') === 'true') + sourceNote;
-      return { route, ownTasks, message, seen, shownSlack, slackSection, effectiveSlot };
+      return { route, ownTasks:shownTasks, message, seen, shownSlack, slackSection, effectiveSlot, buttonRows:shownTasks, doneGroups:done };
      } catch (error) { return {route, prepError:error}; }
     });
     // 피드백 버튼이 붙으면 기록 탭도 미리 만들어 둔다(첫 버튼 누름을 기다리지 않음).
@@ -276,6 +280,7 @@ function sendPmBriefings_(updatedTest, includeSlack, scheduledSlot, _unused, del
       if (packet.afternoon) {
         // 14:00은 점심·날씨·한마디 없이 바로 보낸다(회의는 문안 준비 때 붙임). 새 소식이 있을 때만 피드백 버튼.
         let blocks = buildBriefingBlocks_(message);
+        if (taskDoneEnabled_(props)) blocks = insertTaskDoneButtons_(blocks, taskDoneButtonBlock_(packet.buttonRows || [], day, packet.doneGroups));
         if (!packet.quiet) blocks = appendFeedbackButtons_(blocks, props, day, effectiveSlot);
         if(deliveryOptions&&Date.now()>=deadline)break;
         postSlackDm_(token, route.id, message, slot, blocks);
@@ -327,6 +332,7 @@ function sendPmBriefings_(updatedTest, includeSlack, scheduledSlot, _unused, del
         } catch (error) { console.log('한마디 생략: 문구 탭 또는 선택 이력 확인 필요 | 업무 브리핑은 유지'); }
       }
       let blocks = buildBriefingBlocks_(message);
+      if (taskDoneEnabled_(props)) blocks = insertTaskDoneButtons_(blocks, taskDoneButtonBlock_(packet.buttonRows || [], day, packet.doneGroups));
       // 점심 메이트 버튼: Slack 버튼 응답 주소를 등록하고 ENABLE_LUNCH_MATE=true일 때만.
       if (lunch && props.getProperty('ENABLE_LUNCH_MATE') === 'true') blocks = insertLunchMateButton_(blocks, lunchMateButtonBlock_(lunchMateOn_(props, route.id)));
       blocks = appendFeedbackButtons_(blocks, props, day, effectiveSlot);

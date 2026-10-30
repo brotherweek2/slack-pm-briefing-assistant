@@ -40,7 +40,9 @@ function collectHaCvPmDashboards_(source) {
     // 새 양식(10/27~): 1행 "PM · 언어쌍 관리", 언어쌍 블록 머리글 위 줄의 배치 칸에 "프로젝트 번호 · 목표 종료일 · 수량 · 최대 N배치"
     if (top[0].some(value => String(value || '').includes('언어쌍 관리'))) {
       day = day || Utilities.formatDate(new Date(), BRIEFING.timezone, 'yyyy-MM-dd');
-      dashboards.push({ pm, records: collectPmTabProjects_(sheet, day), gid: sheet.getSheetId() });
+      const stats = {malformed: 0, yearGuessed: 0};
+      dashboards.push({ pm, records: collectPmTabProjects_(sheet, day, stats), gid: sheet.getSheetId(),
+        malformed: stats.malformed, yearGuessed: stats.yearGuessed });
     }
   });
   return dashboards;
@@ -50,27 +52,35 @@ const HACV_PM_TAB = Object.freeze({
   // 프로젝트 요약은 블록 머리글 바로 위 줄, 배치마다 A열(G·I·K·M·O)에 있다(10/28 인수인계). 열이 바뀔 수 있어 줄 전체를 본다.
   firstColumn: 1,
   project: /^(\d+)\s*·\s*(\d{1,2})\/(\d{1,2})\s*·\s*[\d,]+\s*개\s*·\s*최대\s*(\d+)\s*배치/,
+  // 프로젝트 칸처럼 보이지만(번호로 시작하고 수량·배치가 있음) 위 형식과 다른 칸. 일부 칸만 양식이 바뀐 것을 잡는다.
+  projectLike: /^\d{3,}\s*\S.*(?:개|배치)/,
   pair: /^[a-z]{2,3}_[A-Z]{2}-[a-z]{2,3}_[A-Z]{2}$/,
 });
 
 // 새 양식 담당 탭: 프로젝트 칸을 한 건씩 레코드로 만든다. 언어쌍은 같은 줄 또는 바로 아래 줄(블록 머리글)에서 찾는다.
 // 같은 언어쌍·프로젝트 번호가 여러 칸에 보이면 첫 칸만 쓴다.
 // 목표 종료일이 오늘 이후면 구축중, 지났으면 종료(사용자 확인 10/27). 연도는 오늘에서 가장 가까운 해로 정한다.
-function collectPmTabProjects_(sheet, day) {
+// stats(선택): malformed = 프로젝트 칸처럼 보이지만 읽지 못한 칸 수(형식 다름·언어쌍/날짜 없음),
+// yearGuessed = 목표 종료일 연도를 올해가 아닌 해로 추정한 프로젝트 수(가장 가까운 해 규칙이라 연말·연초에만 생김).
+function collectPmTabProjects_(sheet, day, stats) {
   const height = sheet.getLastRow(), width = sheet.getLastColumn();
   if (height < 1 || width < HACV_PM_TAB.firstColumn) return [];
   const rows = readDisplayRowsInChunks_(sheet, 1, height, width);
   const findPair = row => (row || []).map(value => String(value || '').trim()).find(value => HACV_PM_TAB.pair.test(value)) || '';
   const records = [];
   const seen = new Set();
+  const count = key => { if (stats) stats[key]++; };
   rows.forEach((row, index) => {
     for (let col = HACV_PM_TAB.firstColumn - 1; col < row.length; col++) {
-      const match = String(row[col] || '').trim().match(HACV_PM_TAB.project);
-      if (!match) continue;
+      const text = String(row[col] || '').trim();
+      const match = text.match(HACV_PM_TAB.project);
+      if (!match) { if (HACV_PM_TAB.projectLike.test(text)) count('malformed'); continue; }
       const pair = findPair(row) || findPair(rows[index + 1]);
       const targetEnd = nearestIsoDate_(Number(match[2]), Number(match[3]), day);
-      if (!pair || !targetEnd || seen.has(pair + '|' + match[1])) continue;
+      if (!pair || !targetEnd) { count('malformed'); continue; }
+      if (seen.has(pair + '|' + match[1])) continue;
       seen.add(pair + '|' + match[1]);
+      if (targetEnd.slice(0, 4) !== day.slice(0, 4)) count('yearGuessed');
       records.push({ pair, projectId: match[1], stage: '', status: targetEnd >= day ? '구축중' : '종료',
         targetEnd, batches: [], firstColumn: col + 1, sheetRow: index + 1 });
     }
