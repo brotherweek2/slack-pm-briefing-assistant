@@ -2,7 +2,7 @@
  * 01. 슬랙DM발송 — 개인 DM 만들기·보내기, 본인 시험·미리보기
  *
  * 알아둘 것
- * - 본인 시험 DM은 실행 계정 본인 1명에게만, 시험 종류마다 하루 1회.
+ * - 본인 시험 DM은 실행 계정 본인 1명에게만. 횟수 제한 없음(정기 발송만 같은 날 중복 차단).
  * - 한 PM의 명단·문안 오류는 그 PM만 실패로 남기고 나머지는 보낸다.
  * - 담당 탭이 없는 수신자도 정상 대상이다(본인 배정 업무만 표시).
  * - 원본을 못 읽어 직전 결과로 둔 업무 종류는 발송 전 "오늘 갱신" 검사에서 뺀다.
@@ -70,12 +70,12 @@ function checkSlackBotToken() {
     ' | Slack 발송 없음');
 }
 
-/** 본인 전용 10:30 오전 문안 시험. 실행 시각과 상관없이 오전 문안(오늘 회의·점심)으로 본인에게만 보낸다. 하루 1회. */
+/** 본인 전용 10:30 오전 문안 시험. 실행 시각과 상관없이 오전 문안(오늘 회의·점심)으로 본인에게만 보낸다. 몇 번이든 다시 실행 가능. */
 function sendMyMorningBriefingTest() {
   sendPmBriefings_(true, true, undefined, false, {selfTest:true, forceSlot:'11:00'});
 }
 
-/** 본인 전용 14:00 오후 업데이트 시험. 오늘 오전 정기 DM 이후 새로 생긴 것만, 없으면 한 줄 인사. 하루 1회. */
+/** 본인 전용 14:00 오후 업데이트 시험. 오늘 오전 정기 DM 이후 새로 생긴 것만, 없으면 한 줄 인사. 몇 번이든 다시 실행 가능. */
 function sendMyAfternoonBriefingTest() {
   sendPmBriefings_(true, true, undefined, false, {selfTest:true, forceSlot:'14:00'});
 }
@@ -270,7 +270,8 @@ function sendPmBriefings_(updatedTest, includeSlack, scheduledSlot, _unused, del
       if (packet.deferred || Date.now() >= deadline) { console.log('발송 실행 시간 상한: 미처리 대상은 이어 보내기 대상으로 유지'); break; }
       try {
       if (packet.prepError) throw packet.prepError;
-      const alreadySent = prior.some(row => row[0] instanceof Date &&
+      // 본인 시험은 몇 번이든 다시 보낼 수 있다(본인 1명에게만 가므로). 정기·전체 발송만 같은 날 중복을 막는다.
+      const alreadySent = !selfTest && prior.some(row => row[0] instanceof Date &&
         Utilities.formatDate(row[0], BRIEFING.timezone, 'yyyy-MM-dd') === day &&
         row[1] === slot && row[2] === route.pm && /^sent/.test(String(row[4])));
       if (alreadySent) {
@@ -284,7 +285,7 @@ function sendPmBriefings_(updatedTest, includeSlack, scheduledSlot, _unused, del
         if (taskDoneEnabled_(props)) blocks = insertTaskDoneButtons_(blocks, taskDoneButtonBlock_(packet.buttonRows || [], day, packet.doneGroups));
         if (!packet.quiet) blocks = appendFeedbackButtons_(blocks, props, day, effectiveSlot);
         if(deliveryOptions&&Date.now()>=deadline)break;
-        postSlackDm_(token, route.id, message, slot, blocks);
+        postSlackDm_(token, route.id, message, selfTest ? null : slot, blocks);
         doneIds.push(route.id);
         log.appendRow([new Date(), slot, route.pm, ownTasks.map(row => row[0]).join(', '),
           packet.calendarFailure ? 'sent-calendar-unavailable' : slackFailure ? 'sent-sheet-only' : 'sent']);
@@ -340,7 +341,7 @@ function sendPmBriefings_(updatedTest, includeSlack, scheduledSlot, _unused, del
       if (lunch && props.getProperty('ENABLE_LUNCH_MATE') === 'true') blocks = insertLunchMateButton_(blocks, lunchMateButtonBlock_(lunchMateOn_(props, route.id)));
       blocks = appendFeedbackButtons_(blocks, props, day, effectiveSlot);
       if(deliveryOptions&&Date.now()>=deadline)break;
-      postSlackDm_(token, route.id, message, slot, blocks);
+      postSlackDm_(token, route.id, message, selfTest ? null : slot, blocks);
       doneIds.push(route.id);
       log.appendRow([new Date(), slot, route.pm, ownTasks.map(row => row[0]).join(', '),
         calendarFailure ? 'sent-calendar-unavailable' : slackFailure ? 'sent-sheet-only' : 'sent']);

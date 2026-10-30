@@ -213,11 +213,11 @@ assert.equal(sent.length,beforeSelf+1);assert.equal(sent.at(-1).id,'U0000000002'
 assert.match(sent.at(-1).message,/OWN CALENDAR/);assert.doesNotMatch(sent.at(-1).message,/PM B|de_DE-fr_FR/);
 assert.equal(logRows.at(-1)[1],'manual-self-current-test-v2');assert.equal(JSON.stringify(users),flags);
 assert.deepEqual(logRows.slice(0,-1).map(row=>row[1]),oldSlots);
-context.sendMyCurrentBriefingTest();assert.equal(sent.length,beforeSelf+1,'self test same-day duplicate blocked');
+context.sendMyCurrentBriefingTest();assert.equal(sent.length,beforeSelf+2,'self test can be resent the same day');
 ownEmail='not-registered@example.test';let refreshes=0;
 context.refreshBotTasks=()=>{refreshes++;throw Error('should not reach source refresh');};
-assert.throws(()=>context.sendMyCurrentBriefingTest(),/본인 Google 계정/);assert.equal(refreshes,0);assert.equal(sent.length,beforeSelf+1);
-// 아침 버전 본인 시험: 18시에 실행해도 11시 문안(오늘 회의·점심 회차)으로 본인에게만, 별도 슬롯 하루 1회.
+assert.throws(()=>context.sendMyCurrentBriefingTest(),/본인 Google 계정/);assert.equal(refreshes,0);assert.equal(sent.length,beforeSelf+2);
+// 아침 버전 본인 시험: 18시에 실행해도 11시 문안(오늘 회의·점심 회차)으로 본인에게만, 별도 슬롯, 다시 실행 가능.
 ownEmail='own@example.test';context.refreshBotTasks=()=>({pmNames:['PM A','PM B','PM C']});
 const realFormat=context.Utilities.formatDate;context.Utilities.formatDate=(d,tz,f)=>f==='HH'?'18':realFormat(d,tz,f);
 let calendarSlot=null;context.buildLiveCalendarSection_=(_r,_p,slot)=>{calendarSlot=slot;return '\nOWN CALENDAR';};
@@ -233,7 +233,7 @@ assert.equal(sent.length,beforeMorning+1);assert.equal(sent.at(-1).id,'U00000000
 assert.match(sent.at(-1).message,/오전 브리핑 드립니다!/);assert.doesNotMatch(sent.at(-1).message,/마무리 브리핑|PM B/);
 assert.equal(calendarSlot,'11:00','meeting section uses the morning slot');
 assert.equal(logRows.at(-1)[1],'manual-self-morning-test');assert.equal(JSON.stringify(users),flags);
-context.sendMyMorningBriefingTest();assert.equal(sent.length,beforeMorning+1,'morning self test once per day');
+context.sendMyMorningBriefingTest();assert.equal(sent.length,beforeMorning+2,'morning self test can be rerun');
 context.Utilities.formatDate=realFormat;
 
 // 토큰 확인: auth.test만 호출하고 chat.postMessage는 부르지 않는다.
