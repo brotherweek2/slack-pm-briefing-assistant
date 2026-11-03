@@ -4,9 +4,13 @@
  * 알아둘 것
  * - ENABLE_WEATHER=true일 때만(기본 꺼짐). Open-Meteo 무료 API(비상업 조건 확인 후 사용).
  * - 위치는 WEATHER_LAT·WEATHER_LON·WEATHER_PLACE(없으면 서울).
+ * - 16:00~17:15 Slack 미리 수집 트리거가 날씨도 미리 받아 둔다(03번). 17:00 발송은 저장본을 쓰고, 없을 때만 직접 조회한다.
+   발송 중 조회는 묶음마다 실패·성공이 갈려 일부 PM만 날씨가 빠질 수 있다(11/03).
  *
  * 내부 함수 (직접 실행하지 않음)
  * - weatherCodeLabel_(code): WMO 날씨 코드 → 이모지·한국어
+ * - prefetchTomorrowWeather_(props, now): 미리 수집 트리거가 부른다. 오늘 저장본이 없으면 조회해 저장(실패하면 다음 트리거가 다시)
+ * - loadTomorrowWeather_(props, day): 오늘 저장본을 돌려주고, 없으면 조회해 저장한다. 실패하면 null(응답 코드는 로그)
  * - formatTomorrowWeather_(props, day, slot): 17:00 DM의 내일 날씨 한 줄(하루 1번 조회, 실패하면 생략)
  * - formatEveningNotes_(props, day, slot): 17:00 끝부분: 내일 날씨와 주말 인사를 구분선 없이 한 영역으로 묶는다(둘 다 없으면 빈 문자열)
  */
@@ -25,25 +29,38 @@ function weatherCodeLabel_(code) {
   return '🌡️ 날씨';
 }
 
+// 미리 수집 트리거(16:00~17:15)가 부른다. 17:00 발송 전에 하루치 날씨를 저장해 둔다.
+function prefetchTomorrowWeather_(props, now) {
+  if (props.getProperty('ENABLE_WEATHER') !== 'true') return;
+  if (Utilities.formatDate(now, BRIEFING.timezone, 'HH:mm') < '16:00') return;
+  try { loadTomorrowWeather_(props, Utilities.formatDate(now, BRIEFING.timezone, 'yyyy-MM-dd')); }
+  catch (error) { console.log('날씨 미리 받기 실패 | 다음 트리거에서 다시 | ' + error.message); }
+}
+
+function loadTomorrowWeather_(props, day) {
+  let cached = null;
+  try { cached = JSON.parse(props.getProperty(WEATHER.cacheKey) || 'null'); } catch (_) {}
+  if (cached && cached.day === day) return cached;
+  const lat = Number(props.getProperty('WEATHER_LAT') || WEATHER.lat), lon = Number(props.getProperty('WEATHER_LON') || WEATHER.lon);
+  if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
+  const url = 'https://api.open-meteo.com/v1/forecast?latitude=' + lat + '&longitude=' + lon +
+    '&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max&timezone=Asia%2FSeoul&forecast_days=2';
+  const response = UrlFetchApp.fetch(url, {muteHttpExceptions:true});
+  if (response.getResponseCode() !== 200) { console.log('날씨 조회 실패 | 응답 ' + response.getResponseCode()); return null; }
+  const daily = JSON.parse(response.getContentText()).daily || {};
+  const i = (daily.time || []).indexOf(addDaysToIsoDate_(day, 1));
+  if (i < 0) return null;
+  cached = {day, code:daily.weather_code[i], max:Math.round(daily.temperature_2m_max[i]), min:Math.round(daily.temperature_2m_min[i]),
+    rain:daily.precipitation_probability_max ? daily.precipitation_probability_max[i] : null};
+  try { props.setProperty(WEATHER.cacheKey, JSON.stringify(cached)); } catch (_) {}
+  return cached;
+}
+
 function formatTomorrowWeather_(props, day, slot) {
   if (slot !== '17:00' || props.getProperty('ENABLE_WEATHER') !== 'true') return '';
   try {
-    let cached = null;
-    try { cached = JSON.parse(props.getProperty(WEATHER.cacheKey) || 'null'); } catch (_) {}
-    if (!cached || cached.day !== day) {
-      const lat = Number(props.getProperty('WEATHER_LAT') || WEATHER.lat), lon = Number(props.getProperty('WEATHER_LON') || WEATHER.lon);
-      if (!Number.isFinite(lat) || !Number.isFinite(lon)) return '';
-      const url = 'https://api.open-meteo.com/v1/forecast?latitude=' + lat + '&longitude=' + lon +
-        '&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max&timezone=Asia%2FSeoul&forecast_days=2';
-      const response = UrlFetchApp.fetch(url, {muteHttpExceptions:true});
-      if (response.getResponseCode() !== 200) return '';
-      const daily = JSON.parse(response.getContentText()).daily || {};
-      const i = (daily.time || []).indexOf(addDaysToIsoDate_(day, 1));
-      if (i < 0) return '';
-      cached = {day, code:daily.weather_code[i], max:Math.round(daily.temperature_2m_max[i]), min:Math.round(daily.temperature_2m_min[i]),
-        rain:daily.precipitation_probability_max ? daily.precipitation_probability_max[i] : null};
-      try { props.setProperty(WEATHER.cacheKey, JSON.stringify(cached)); } catch (_) {}
-    }
+    const cached = loadTomorrowWeather_(props, day);
+    if (!cached) return '';
     const place = String(props.getProperty('WEATHER_PLACE') || WEATHER.place).slice(0, 20);
     return '\n\n*내일 날씨* · ' + escapeSlack_(place) + ' ' + weatherCodeLabel_(cached.code) + ' · ' + cached.min + '~' + cached.max + '°C' +
       (Number.isFinite(cached.rain) ? ' · 강수 ' + cached.rain + '%' + (cached.rain >= 60 ? ' ☔ 우산 챙기세요' : '') : '');

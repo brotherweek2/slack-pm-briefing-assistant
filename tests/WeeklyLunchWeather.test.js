@@ -169,6 +169,23 @@ assert.equal(weather, '\n\n*내일 날씨* · 서울 🌧️ 비 · 8~18°C · �
 assert.match(fetches[0].url, /^https:\/\/api\.open-meteo\.com\/v1\/forecast\?latitude=37\.5665&longitude=126\.978/);
 ctx.formatTomorrowWeather_(props, '2026-10-23', '17:00');
 assert.equal(fetches.length, 1, 'one request per day (cached)');
+// 미리 받기: 16:00 전에는 조회하지 않고, 16:00 이후 하루 1번 저장. 실패하면 저장하지 않아 다음 트리거가 다시 시도.
+{
+  values.delete('WEATHER_TOMORROW'); fetches = [];
+  const okReply = fetchReply;
+  ctx.prefetchTomorrowWeather_(props, new Date('2026-10-23T15:50:00+09:00'));
+  assert.equal(fetches.length, 0, 'no prefetch before 16:00');
+  fetchReply = () => ({getResponseCode: () => 429, getContentText: () => ''});
+  ctx.prefetchTomorrowWeather_(props, new Date('2026-10-23T16:10:00+09:00'));
+  assert.equal(fetches.length, 1); assert.equal(values.has('WEATHER_TOMORROW'), false, 'failure is not cached');
+  fetchReply = okReply;
+  ctx.prefetchTomorrowWeather_(props, new Date('2026-10-23T16:20:00+09:00'));
+  ctx.prefetchTomorrowWeather_(props, new Date('2026-10-23T16:30:00+09:00'));
+  assert.equal(fetches.length, 2, 'cached after the first success');
+  fetchReply = () => { throw new Error('send-time fetch should not happen'); };
+  assert.match(ctx.formatTomorrowWeather_(props, '2026-10-23', '17:00'), /내일 날씨/, '17:00 uses the prefetched weather');
+  fetchReply = okReply;
+}
 assert.equal(ctx.weatherCodeLabel_(0), '☀️ 맑음'); assert.equal(ctx.weatherCodeLabel_(3), '☁️ 흐림'); assert.equal(ctx.weatherCodeLabel_(73), '🌨️ 눈');
 console.log('Meeting notes, weekly outlook, lunch mate button and weather checks passed');
 

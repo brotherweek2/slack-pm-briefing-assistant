@@ -444,6 +444,7 @@ function collectBbpmSnapshot(e) {
   if (e) {
     if (!isBbpmCollectWindow_(now)) return;
     if (briefingDayOff_(now)) return; // 주말·공휴일·회사 휴무일은 정기 DM이 없으므로 미리 수집도 쉰다(편집기 수동 실행은 수집).
+    prefetchTomorrowWeather_(props, now); // 16:00 이후: 17:00 DM용 내일 날씨를 미리 저장(26번). 실패해도 수집은 계속
     const bot = SpreadsheetApp.openById(requiredProperty_(props, 'BOT_SPREADSHEET_ID'));
     const saved = readBbpmSnapshot_(props, bot);
     if (saved && now.getTime() / 1000 - saved.meta.newest < BBPM_SNAPSHOT.skipIfNewerMinutes * 60) return;
