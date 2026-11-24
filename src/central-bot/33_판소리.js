@@ -1,15 +1,30 @@
 /**
  * 33. 판소리 — 지정 스레드 읽기 범위·수신자·업무 분류
- * - configureMyPansoriBriefing(): 실행 계정과 연결된 본인을 수신자로 추가. 속성 변경, DM 없음.
- * - previewPansoriBriefing(): 지정 두 스레드를 읽어 본인 분류 결과 확인. 저장·DM 없음.
+ * - ⚠️ configureMyPansoriBriefing(): 회사 계정으로 1회 실행. 봇 명단의 본인을 수신자로 추가. 속성 변경, DM 없음.
+ * - 🔍 previewPansoriBriefing(): 연결 후 지정 스레드를 직접 읽어 분류 로그 확인. 저장·DM 없음.
+ * - 🔍 checkPansoriClassification(): 저장된 수집본의 판소리 글마다 누구에게 어떻게 판정됐는지·의심 사례 점검표. Slack 조회·저장·DM 없음.
  * - ENABLE_PANSORI_READ=true, PANSORI_RECIPIENT_IDS=["Slack ID"], PANSORI_THREADS(스레드 링크, 쉼표·줄바꿈 구분) 설정 시 활성.
  *   스레드 링크는 코드에 두지 않고 BOT_SETTINGS → applyBotSettings로 넣는다. 없으면 판소리 읽기만 건너뛴다.
- * - 11/24 고도화: 담당자 아래 설명·기한 보존. 답장 자동 판정·숨김 제거.
- *   ③ 스레드 목록 설정화 ④ 위클리 당일 10:30 '회의 준비' 줄 ⑤ "1) 2)" 할 일 목록 나누기 ⑥ 회신 대기 표시
+ * - 읽기 → 담당자별 추출 → 분류 → 회차별 선택 → 개인 DM 순서로 처리한다.
+ * - 담당자 하위 설명·기한을 보존한다. 경계가 불명확하면 원문 확인으로 둔다.
+ * - 스레드 활동으로 답장·완료를 추정하지 않는다. 14시는 새 항목만, 17시는 회신 요청 재안내.
+ * - 스레드 설정화·회의 준비·번호 목록은 아래 내부 함수에서 처리한다.
  * - 수신자 명단에 있는 사람에게만 개인 요청·@here/@channel 공통 안내를 제공한다.
  * - 원본 시트·Slack 메시지·캘린더는 변경하지 않는다.
  * - 분류 수정: PANSORI_CATEGORIES의 이름·keywords 수정. 앞 규칙부터 적용.
  * - 완료·보류·일정 변경의 이전 요청 연결은 자동 확정하지 않는다.
+ *
+ * 내부 함수(직접 실행하지 않음)
+ * - pansoriClassificationReport_(snapshot, people, route, day): 점검표 줄을 만든다(멘션된 사람 전원 기준, 의심 표시).
+ * - readPansoriRoute_(props): 활성·수신자·스레드 설정 검증. 링크가 없거나 잘못되면 판소리 읽기 생략.
+ * - pansoriMentionRecords_(message, recipients, route): 개인/공통 대상과 담당 구간을 추출한다.
+ * - pansoriHereLines_(section): 공통 앞부분에서 개인 요청을 분리한다.
+ * - refinePansoriDigest_(item): 업무 유형·번호 목록·회신 요청 표현을 판별한다.
+ * - slackDigestPlainSafe_(text): 분류 전에 Slack 서식을 걷어낸다.
+ * - pansoriOwnLines_(section, id): 본인 담당 줄·상위 제목·하위 설명과 기한을 보존한다.
+ * - pansoriChecklist_(text): 번호 목록을 최대 5개 발췌한다. 완료 체크 상태는 아니다.
+ * - pansoriMeetingPrepLine_(props, route, items, day, slot): 오전 회의 준비 안내. 회의록과 회의의 정확한 날짜 대응은 추가 점검 대상.
+ * - pansoriPastMeetingNotice_(item, day): 명확히 지난 회의 초대를 DM 선택에서만 제외한다.
  */
 const PANSORI_CATEGORIES = Object.freeze([
   {name:'회의·안건·회의록', keywords:/회의(?!실)|스크럼|위클리|인수인계|온보딩|안건/},
@@ -65,6 +80,62 @@ function previewPansoriBriefing() {
   console.log('판소리 지정 스레드 2개 조회·본인 분류 완료 | 저장·Slack 발송 없음');
 }
 
+// 🔍 판정 점검표: 저장된 수집본의 판소리 글마다 누구에게 어떤 종류·기한으로 붙었는지와 의심 사례를 로그로 보인다.
+// 글에 멘션된 사람은 수신자 설정과 상관없이 모두 판정해 본다(실제 DM 수신자는 바뀌지 않음). Slack 조회·저장·DM 없음.
+// 리드 글이 20~30개 쌓였을 때 한 번 돌려 "⚠️" 줄부터 원문과 비교한다.
+function checkPansoriClassification() {
+  const props = PropertiesService.getScriptProperties();
+  const route = readPansoriRoute_(props);
+  if (!route) throw new Error('판소리 읽기가 꺼져 있거나 PANSORI_THREADS가 비어 있습니다.');
+  const bot = SpreadsheetApp.openById(requiredProperty_(props, 'BOT_SPREADSHEET_ID'));
+  const snapshot = readBbpmSnapshot_(props, bot);
+  if (!snapshot) throw new Error('저장된 Slack 수집본이 없습니다. collectBbpmSnapshot 뒤 다시 실행하세요.');
+  const people = readBotRows_(requireBotSheet_(bot, BOT_WORKBOOK.usersTab, BOT_WORKBOOK.userHeaders), BOT_WORKBOOK.userHeaders.length)
+    .map(row => ({pm:String(row[0] || '').trim(), id:String(row[1] || '').trim()})).filter(p => p.pm && p.id);
+  const day = Utilities.formatDate(new Date(), BRIEFING.timezone, 'yyyy-MM-dd');
+  console.log(pansoriClassificationReport_(snapshot, people, route, day).join('\n'));
+}
+
+function pansoriClassificationReport_(snapshot, people, route, day) {
+  const inThread = m => route.threads.some(t => t.channel === m.sourceChannel && t.ts === m.sourceThreadTs);
+  const messages = (snapshot.messages || []).filter(inThread).sort((a, b) => Number(a.ts) - Number(b.ts));
+  const idsIn = text => [...new Set(Array.from(String(text || '').matchAll(/<@([UW][A-Z0-9]+)/g), m => m[1]))];
+  const ids = [...new Set(route.ids.concat(messages.flatMap(m => idsIn(m.text))))];
+  const nameOf = id => (people.find(p => p.id === id) || {}).pm || '명단 밖 …' + id.slice(-4);
+  const recipients = ids.map(id => ({pm:nameOf(id), id}));
+  const wide = Object.assign({}, route, {ids});
+  const lines = ['[판소리 판정 점검표] 글 ' + messages.length + '개 · 판정 대상 ' + ids.length + '명(멘션된 사람 전원, 실제 수신자 ' +
+    route.ids.length + '명) · 수집본 ' + Utilities.formatDate(new Date(snapshot.meta.newest * 1000), BRIEFING.timezone, 'MM/dd HH:mm') +
+    ' 기준 · 읽기만, 저장·DM 없음'];
+  let flagged = 0;
+  messages.forEach(m => {
+    const text = String(m.text || '');
+    // 제목: 인사 줄("○○ 님, 안녕하세요")은 건너뛴 첫 줄
+    const plainLines = slackDigestPlainSafe_(text).split('\n').map(line => line.trim()).filter(Boolean);
+    const title = plainLines.find(line => !/^@?\S*\s*님[,!.\s]|^님[,!.\s]?|안녕하세요/.test(line)) || plainLines[0] || '';
+    const here = /<!here>|<!channel>/.test(text);
+    const mentions = idsIn(text).length;
+    const items = buildSlackDigestItems_(pansoriMentionRecords_(m, recipients, wide));
+    const flags = [];
+    if ((here || mentions) && !items.length) flags.push('멘션이 있는데 아무에게도 안 붙음');
+    if (mentions && !here && items.length < mentions) flags.push('멘션 ' + mentions + '명 중 ' + items.length + '명만 붙음');
+    if (items.some(i => i.pansoriAmbiguous)) flags.push('담당 구분 실패(원문 확인)');
+    if (items.some(i => i.kind === '확인 필요')) flags.push('업무 종류 못 정함');
+    if (items.some(i => /여러 개/.test(i.deadline || ''))) flags.push('기한 여러 개');
+    if (flags.length) flagged++;
+    lines.push('', (flags.length ? '⚠️ ' : '• ') + slackDigestPostedAt_(m.ts) + ' ' + Array.from(title).slice(0, 40).join('') +
+      ' | 멘션 ' + mentions + '명' + (here ? ' + @here' : '') + (flags.length ? ' | ' + flags.join(' · ') : ''));
+    items.forEach(i => lines.push('   → ' + i.pm + ' · ' + (i.category === 'direct' ? '직접' : '공통') + ' · ' + i.kind +
+      (i.deadline ? ' · 기한 ' + i.deadline : '') + (i.awaitingReply ? ' · 회신 요청' : '') +
+      (i.pansoriMine ? ' · 내 담당: ' + Array.from(i.pansoriMine).slice(0, 40).join('') : '') +
+      ((i.pansoriChecklist || []).length ? ' · 할 일 ' + i.pansoriChecklist.length + '개' : '') +
+      (pansoriPastMeetingNotice_(i, day) ? ' · 지난 회의라 DM에서 숨김' : '')));
+    if (!items.length) lines.push('   → (붙은 사람 없음)');
+  });
+  lines.push('', '의심 ' + flagged + '건 / ' + messages.length + '건. ⚠️ 줄은 Slack 원문과 비교해 규칙 보완이 필요한지 판단하세요.');
+  return lines;
+}
+
 function readPansoriRoute_(props) {
   if (props.getProperty('ENABLE_PANSORI_READ') !== 'true') return null;
   let ids;
@@ -87,7 +158,7 @@ function readPansoriRoute_(props) {
   return {channel:threads[0].channel, ids:[...new Set(ids)].sort(), threads};
 }
 
-// 명시된 담당자 블록만 분리한다. cc/인용/취소선은 담당자 판정에서 제외한다.
+// 담당자 블록을 먼저 나누고, 필요하면 본인 줄과 하위 설명·기한을 추출한다. cc/인용/취소선 제외.
 function pansoriMentionRecords_(message, recipients, route) {
   const text = String(message.text || '').replace(/~[^~\n]*~/g, '').split('\n')
     .filter(line => !/^\s*>/.test(line)).join('\n');
@@ -150,7 +221,7 @@ function slackDigestPlainSafe_(text) {
     String(text || '').replace(/<[^>|]+\|([^>]+)>/g, '$1').replace(/<[^>]+>/g, '');
 }
 
-// ① 내 멘션이 있는 줄 + 들여쓰기로 본 상위 소제목 + 글 제목([...])만 고른다.
+// 본인 멘션 줄·상위 제목·하위 설명과 기한을 함께 보존한다. 들여쓰기가 끝나면 담당 구간을 닫는다.
 // 내 줄에 다른 사람도 함께 멘션돼 있으면 null(누구 일인지 원문 확인).
 function pansoriOwnLines_(section, id) {
   const lines = String(section).split('\n');
@@ -202,7 +273,7 @@ function pansoriChecklist_(text) {
 
 // 답장으로 개별 요청의 처리 상태를 추정하지 않는다.
 
-// ④ 위클리 당일 10:30: 오늘 캘린더에 판소리 회의가 있고, 아직 답하지 않은 회의록 요청이 있으면 한 줄 안내.
+// 10:30: 오늘 판소리 회의와 최근 7일 회의록 요청을 함께 안내한다. 실제 답장 여부는 판단하지 않는다.
 // 캘린더는 PM이 연결한 저장본(BOT_CALENDAR_PERSONAL)을 읽기만 한다. 못 읽으면 줄을 생략한다.
 function pansoriMeetingPrepLine_(props, route, items, day, slot) {
   if (slot !== '11:00') return '';

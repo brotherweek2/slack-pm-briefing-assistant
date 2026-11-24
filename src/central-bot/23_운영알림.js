@@ -182,6 +182,15 @@ function buildAdminRoundSummary_(props, slot, info, now) {
     const age = newest ? Math.round((reference - newest) / 60000) : -1;
     lines.push('• Slack 자료 ' + (newest ? Utilities.formatDate(new Date(newest), BRIEFING.timezone, 'HH:mm') + ' 기준' : '없음') +
       (age > 60 ? ' · ⚠️ ' + age + '분 지남' : ''));
+    // 판소리 설정이 수집 뒤에 바뀌면 다음 수집까지 판소리는 겹치는 스레드·수신자만 보인다(BBPM은 정상). 저절로 풀리므로 할 일은 없다.
+    let pansoriNow = null, pansoriErr = '';
+    try { pansoriNow = typeof readPansoriRoute_ === 'function' ? readPansoriRoute_(props) : null; } catch (e) { pansoriErr = e.message; }
+    if (pansoriErr) {
+      lines.push('• ⚠️ 판소리 설정 오류: ' + escapeSlack_(String(pansoriErr).slice(0, 80)));
+      todo.push('BOT_SETTINGS의 판소리 수신자·스레드 값을 확인하고 applyBotSettings를 다시 실행하세요.');
+    } else if (snapshot && snapshot.meta && JSON.stringify(snapshot.meta.pansori || null) !== JSON.stringify(pansoriNow)) {
+      lines.push('• ⚠️ 판소리 설정이 마지막 수집 뒤 바뀜 — 다음 수집 전까지 판소리는 겹치는 스레드·수신자만 보임(BBPM은 정상)');
+    }
     if (!newest || age > 60) todo.push('03_슬랙수집.gs → collectBbpmSnapshot 실행 로그를 확인하세요' +
       (props.getProperty('BBPM_COLLECT_LAST_ERROR') ? ' (최근 오류: ' + escapeSlack_(String(props.getProperty('BBPM_COLLECT_LAST_ERROR')).slice(0, 60)) + ')' : '') + '.');
   } catch (error) { lines.push('• Slack 자료 확인 실패'); todo.push(adminFailureHint_(error.message)); }
@@ -223,6 +232,8 @@ function buildAdminRoundSummary_(props, slot, info, now) {
   if (kb >= 400) todo.push('23_운영알림.gs → cleanupBotStorage 를 실행하세요.');
 
   const unique = [...new Set(todo)];
+  // 경고가 여러 줄 사이에 묻히지 않게, 처리할 것이 있으면 제목 바로 아래에 건수를 먼저 보인다(11/24).
+  if (unique.length) lines.splice(1, 0, '🚨 *확인할 것 ' + unique.length + '건* — 아래 ⚠️ 줄과 맨 아래 👉 참고');
   lines.push(unique.length ? '\n👉 *할 일*\n' + unique.map(item => '• ' + item).join('\n') : '\n✅ 이상 없음');
   return {text:lines.join('\n'), adminId, rows};
 }

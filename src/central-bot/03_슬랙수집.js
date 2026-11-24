@@ -31,7 +31,7 @@
  * - runBbpmCollectStep_(props, now): 한 배치 수집 후 진행 상황 또는 완료본을 저장하고 마지막 오류 상태를 관리한다
  * - writeBbpmSnapshot_(bot, props, scan, groupId): 멘션이 있는 메시지만 두 전용 탭에 번갈아 저장하고 활성 완료본 속성을 바꾼다
  * - readBbpmSnapshot_(props, bot): 현재 활성 완료본의 메타정보와 메시지를 읽는다
- * - loadFreshBbpmSnapshot_(props, bot, now, maxAgeMinutes): 완료본 존재와 허용 경과 시간(기본 60분, 시험·미리보기는 하루)을 검사하고 오래된 자료를 차단한다
+ * - loadFreshBbpmSnapshot_(props, bot, now, maxAgeMinutes): 완료본 존재와 허용 경과 시간(기본 60분, 시험·미리보기는 하루)을 검사하고 오래된 자료를 차단한다. 판소리 설정만 바뀌었으면 BBPM은 쓰고 판소리는 겹치는 부분만
  * - classifySlackSnapshot_(snapshot, recipients): 완료본의 그룹 멤버·기간을 사용해 현재 수신자별로 분류한다
  */
 
@@ -565,8 +565,21 @@ function loadFreshBbpmSnapshot_(props, bot, now, maxAgeMinutes) {
   if (groupId && groupId !== meta.groupId) {
     throw fail('CONFIG_CHANGED', 'Slack PM 그룹 설정이 변경됐습니다. 다시 수집하세요.');
   }
-  if (JSON.stringify(meta.pansori || null) !== JSON.stringify(typeof readPansoriRoute_ === 'function' ? readPansoriRoute_(props) : null)) {
-    throw fail('CONFIG_CHANGED', '판소리 수신 설정이 바뀌었습니다. 다시 수집하세요.');
+  const pansoriNow = typeof readPansoriRoute_ === 'function' ? readPansoriRoute_(props) : null;
+  if (JSON.stringify(meta.pansori || null) !== JSON.stringify(pansoriNow)) {
+    // 판소리 설정만 수집 뒤에 바뀐 경우(11/24): BBPM은 그대로 쓰고, 판소리는 수집 때와 지금 설정에 모두 있는
+    // 스레드·수신자만 쓴다. 빠진 수신자·스레드의 예전 자료는 누구에게도 보이지 않고(그 스레드 글은 아예 뺀다),
+    // 새로 넣은 스레드·수신자는 다음 수집부터 보인다. 이전에는 Slack 칸 전체를 비웠다.
+    const old = meta.pansori || null;
+    const sameThread = (a, b) => a.channel === b.channel && a.ts === b.ts;
+    const ids = old && pansoriNow ? old.ids.filter(id => pansoriNow.ids.includes(id)) : [];
+    const threads = old && pansoriNow ? old.threads.filter(t => pansoriNow.threads.some(c => sameThread(t, c))) : [];
+    const kept = ids.length && threads.length ? Object.assign({}, old, {ids, threads}) : null;
+    const dropped = old ? old.threads.filter(t => !(kept && kept.threads.some(k => sameThread(t, k)))) : [];
+    snapshot.messages = snapshot.messages.filter(m => !dropped.some(t => t.channel === m.sourceChannel && t.ts === m.sourceThreadTs));
+    snapshot.meta = Object.assign({}, meta, {pansori:kept});
+    snapshot.pansoriConfigChanged = true;
+    console.log('판소리 설정이 수집 뒤 바뀜 | BBPM은 그대로, 판소리는 겹치는 스레드·수신자만 | 다음 수집 뒤 전체 반영');
   }
   if (age > maxAge * 60) {
     throw fail('STALE', '최근 ' + maxAge + '분 안에 완료된 Slack 수집 결과가 없습니다.');

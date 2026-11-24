@@ -19,7 +19,8 @@
  * 내부 함수 (직접 실행하지 않음)
  * - sendPmBriefings_(updatedTest, includeSlack, scheduledSlot, _unused, deliveryOptions): 업무 갱신·수신자 검증·중복 차단 후 개인 DM을 보내고 성공 이력을 저장한다
  * - formatBriefingBasis_(now, slackAsOf, day, withCalendar, preview): 업무·회의 및 Slack 조회 시각을 정보 영역 끝 한 줄로 정리한다
- * - describeSlackFailure_(error, props): 완료본 없음·최신성 초과·권한·인증·호출 제한을 짧은 안내로 바꾼다
+ * - describeSlackFailure_(error, props): 완료본 없음·최신성 초과·설정 변경·권한·인증·호출 제한을 짧은 안내로 바꾼다
+ * - previewWarnings_(props, day, pansoriChanged): 미리보기 끝에 업무 시트 읽기 실패·오늘 갱신 전·Slack 수집 오류·판소리 설정 변경을 알린다
  * - buildPmSlackRoutes_(userRows, owners, issues): BOT_USERS에서 발송 대상(이름·Slack ID)을 만들고 명단 문제를 모은다
  * - previewPersonalAssistantBriefing_(slot): 시트 업무→회의→Slack→오전 점심→한마디 순서의 미리보기를 만들고 이력은 변경하지 않는다
  */
@@ -405,6 +406,7 @@ function formatBriefingBasis_(now, slackAsOf, day, withCalendar, preview) {
 function describeSlackFailure_(error, props) {
   let reason = '기타 오류 (실행 로그 확인)';
   if (error.code === 'READ_DISABLED') reason = 'Slack 읽기 설정 꺼짐';
+  else if (error.code === 'CONFIG_CHANGED') reason = 'Slack 설정 변경 뒤 아직 다시 수집 전 (다음 수집 뒤 반영)';
   else if (error.code === 'NO_SNAPSHOT' || error.code === 'STALE') {
     let last = null;
     try { last = JSON.parse(props.getProperty('BBPM_COLLECT_LAST_ERROR') || 'null'); } catch (ignored) {}
@@ -460,12 +462,13 @@ function previewPersonalAssistantBriefing_(slot) {
   assertFreshPilotTasks_(rows.filter(row => row[12] === true && row[1] === route.pm && isHaCvBriefingTask_(row[0])), day);
   let message = formatPersonalWorkBriefing_(route.pm, rows, day, null, slot, true);
   // Slack을 먼저 읽어 업무 줄에 묶을 항목을 정한 뒤, 업무→회의→Slack 순서로 조립한다.
-  let slackAsOf = '', slackSection = '';
+  let slackAsOf = '', slackSection = '', pansoriChanged = false;
   try {
     if (props.getProperty('ENABLE_SLACK_MENTION_READ') !== 'true') {
       throw Object.assign(new Error('Slack 읽기 비활성'), {code:'READ_DISABLED'});
     }
     const snapshot = loadFreshBbpmSnapshot_(props, bot, now, 1440); // 미리보기는 하루 안의 최근 완료본
+    pansoriChanged = Boolean(snapshot.pansoriConfigChanged);
     let items = buildSlackDigestItems_(classifySlackSnapshot_(snapshot, [route]));
     // 미리보기는 저장된 작성자 이름만 쓴다(Slack 조회·속성 저장 없음).
     try { items = attachSlackAuthorNames_(items, '', true); }
@@ -506,5 +509,22 @@ function previewPersonalAssistantBriefing_(slot) {
   if (props.getProperty('ENABLE_LUNCH_MATE') === 'true') blocks = insertLunchMateButton_(blocks, lunchMateButtonBlock_(lunchMateOn_(props, route.id)));
   blocks = appendFeedbackButtons_(blocks, props, day, slot);
   console.log(blocks ? briefingBlocksAsText_(blocks) : message);
-  console.log('현재 자료로 회차별 문안만 확인 | 과거 시각 재현 아님 | 원천 새 조회·시트/이력 변경·Slack 수집/발송 없음');
+  // 미리보기는 원본을 새로 읽지 않으므로, 마지막 업무 갱신·Slack 수집에 문제가 있었으면 여기서 알린다(11/24).
+  console.log(['현재 자료로 회차별 문안만 확인 | 과거 시각 재현 아님 | 원천 새 조회·시트/이력 변경·Slack 수집/발송 없음']
+    .concat(previewWarnings_(props, day, pansoriChanged)).join('\n'));
+}
+
+// 미리보기 경고: 업무 시트 읽기 실패(직전 결과 유지)·오늘 업무 갱신 전·Slack 수집 오류·판소리 설정 변경.
+function previewWarnings_(props, day, pansoriChanged) {
+  const out = [];
+  let refreshed = null;
+  try { refreshed = JSON.parse(props.getProperty('BOT_TASKS_REFRESHED') || 'null'); } catch (_) {}
+  if (!refreshed || refreshed.day !== day) out.push('⚠️ 오늘 아직 업무 시트를 새로 읽지 않았어요. 업무 칸은 마지막 갱신 기준이에요(다음 정기 회차에 갱신).');
+  else if (Array.isArray(refreshed.sourceFailures) && refreshed.sourceFailures.length) out.push('⚠️ 마지막 업무 갱신에서 읽지 못한 시트(직전 결과 유지): ' +
+    [...new Set(refreshed.sourceFailures.map(text => String(text).split(':')[0]))].join(' · ') + ' → inspectOriginalSheetStructure로 확인');
+  const lastError = props.getProperty('BBPM_COLLECT_LAST_ERROR');
+  if (lastError) { let message = lastError; try { message = JSON.parse(lastError).message || lastError; } catch (_) {}
+    out.push('⚠️ 최근 Slack 수집 오류: ' + String(message).slice(0, 100)); }
+  if (pansoriChanged) out.push('⚠️ 판소리 설정이 마지막 수집 뒤 바뀌었어요. 다음 수집 전까지 판소리는 겹치는 스레드·수신자만 보여요(BBPM은 정상).');
+  return out;
 }

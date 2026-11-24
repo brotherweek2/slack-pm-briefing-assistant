@@ -136,3 +136,21 @@ assert.equal(typeof context.markPansoriReplies_, 'undefined', 'automatic reply i
 assert.equal(context.slackDigestDeadline_('두 분 모두 4시까지 검수 진행 후 5시 전까지만 업데이트 해주시면 감사하겠습니다'), '5시 전');
 assert.equal(context.slackDigestDeadline_('내일 3시까지 제출'), '내일 3시까지');
 console.log('Slack deadline: request-adjacent time passed');
+
+// 11/24: 판정 점검표 — 멘션된 사람 전원 기준, 아무에게도 안 붙은 멘션 글은 ⚠️
+{
+  const T = {host:'example.slack.com', channel:'C00000001', ts:'1700000000.000001'};
+  const m = (ts, text) => ({ts, text, user:'U00000009', sourceChannel:T.channel, sourceHost:T.host, sourceThreadTs:T.ts});
+  const snapshot = {meta:{newest:1700001000}, messages:[
+    m('1700000100.000001', '*[녹음 준비]*\n<@U00000002> 님, 소음 테스트 진행 부탁드립니다'),
+    m('1700000200.000001', '~<@U00000003> 취소~ 공지만 남깁니다'),
+    {ts:'1700000300.000001', text:'<@U00000002> 다른 채널', sourceChannel:'C00000009', sourceHost:T.host, sourceThreadTs:'1'}]};
+  vm.runInContext(fs.readFileSync('src/central-bot/12_슬랙키워드.js', 'utf8'), context); // 점검표는 실제 분류(키워드)까지 거친다
+  const report = context.pansoriClassificationReport_(snapshot, [{pm:'Test B', id:'U00000002'}],
+    {channel:T.channel, ids:['U00000001'], threads:[T]}, '2026-11-24').join('\n');
+  assert.match(report, /글 2개/, 'only configured threads');
+  assert.match(report, /→ Test B · 직접 · 녹음 준비/, 'mentioned non-recipient is checked too');
+  assert.match(report, /⚠️ .*멘션이 있는데 아무에게도 안 붙음/, 'struck-through mention flagged');
+  assert.match(report, /의심 1건 \/ 2건/);
+  console.log('Pansori: classification report passed');
+}

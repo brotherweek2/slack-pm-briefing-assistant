@@ -186,3 +186,8 @@ console.log('Admin round summary, hints, once-per-slot, cleanup and start-failur
   assert.doesNotMatch(st, /연도 추정|일부 칸 형식/, 'no lines when nothing is flagged');
   console.log('Empty PM tabs and unreadable work sheets are flagged in the round summary');
 }
+
+// 11/24: 처리할 것이 있으면 제목 바로 아래에 건수, 이상 없으면 표시하지 않음.
+assert.match(summary.text.split('\n')[1], /^🚨 \*확인할 것 \d+건\*/, 'warning count right under the title');
+assert.doesNotMatch(clean.text, /🚨/);
+console.log('Admin summary: warning count on top passed');

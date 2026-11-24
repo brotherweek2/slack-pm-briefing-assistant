@@ -162,6 +162,39 @@ assert.throws(()=>fresh(props,bot,at(nowSec-600)),error=>error.code==='INVALID_S
 values.set('SLACK_PM_GROUP_ID','S0000000001');
 assert.throws(()=>fresh(props,bot,at(nowSec+600)),error=>error.code==='CONFIG_CHANGED');
 values.delete('SLACK_PM_GROUP_ID');
+// 11/24: 판소리 설정만 수집 뒤에 바뀌면 Slack 칸을 비우지 않는다. BBPM은 그대로, 판소리는 겹치는 스레드·수신자만.
+{
+  const T1 = {host:'example.slack.com', channel:'C00000002', ts:'1700000000.000001'};
+  const T2 = {host:'example.slack.com', channel:'C00000002', ts:'1700000000.000002'};
+  ctx.readPansoriRoute_ = () => ({channel:'C00000002', ids:['U00000001'], threads:[T1]});
+  const newlyOn = fresh(props, bot, at(nowSec + 600));
+  assert.equal(newlyOn.pansoriConfigChanged, true, 'pansori turned on after collection: snapshot still usable');
+  assert.equal(newlyOn.meta.pansori, null, 'nothing collected for pansori yet');
+  assert.equal(newlyOn.messages.length, 2, 'BBPM messages stay');
+  // 수집 때 판소리 두 스레드·두 수신자 → 지금은 T1·수신자 1명만
+  ctx.readPansoriRoute_ = () => ({channel:'C00000002', ids:['U00000001', 'U00000003'], threads:[T1, T2]});
+  const scan = snapScan(nowSec + 1200);
+  scan.messages.push({ts:String(nowSec + 1100) + '.000001', text:'<@U00000001> T1 요청', sourceChannel:'C00000002',
+    sourceHost:'example.slack.com', sourceThreadTs:T1.ts},
+  {ts:String(nowSec + 1101) + '.000001', text:'<@U00000003> T2 요청', sourceChannel:'C00000002',
+    sourceHost:'example.slack.com', sourceThreadTs:T2.ts});
+  assert.equal(write(bot, props, scan, 'S00000001'), true);
+  assert.equal(fresh(props, bot, at(nowSec + 1300)).pansoriConfigChanged, undefined, 'same config: unchanged');
+  ctx.readPansoriRoute_ = () => ({channel:'C00000002', ids:['U00000001'], threads:[T1]});
+  const narrowed = fresh(props, bot, at(nowSec + 1300));
+  assert.equal(narrowed.pansoriConfigChanged, true);
+  assert.equal(narrowed.meta.pansori.ids.length, 1, 'removed recipient is not used');
+  assert.equal(narrowed.meta.pansori.threads.length, 1, 'removed thread is not used');
+  assert.ok(!narrowed.messages.some(m => m.sourceThreadTs === T2.ts), 'removed thread messages are dropped entirely');
+  assert.ok(narrowed.messages.some(m => m.sourceThreadTs === T1.ts), 'kept thread messages stay');
+  ctx.readPansoriRoute_ = () => null;
+  const off = fresh(props, bot, at(nowSec + 1300));
+  assert.equal(off.meta.pansori, null, 'pansori turned off: no pansori recipients');
+  assert.ok(!off.messages.some(m => m.sourceChannel === 'C00000002'), 'pansori thread messages are not reclassified as BBPM');
+  delete ctx.readPansoriRoute_;
+  write(bot, props, snapScan(nowSec + 600), 'S00000001'); // 뒤 테스트용으로 이전 수집본 복원
+  console.log('Snapshot: pansori config change keeps BBPM and narrows pansori passed');
+}
 const emptyProps={getProperty:()=>null};
 assert.throws(()=>fresh(emptyProps,bot,at(nowSec)),error=>error.code==='NO_SNAPSHOT');
 const records=vm.runInContext('classifySlackSnapshot_',ctx)(read(props,bot),[{pm:'PM A',id:'U00000001'},{pm:'PM B',id:'U00000002'}]);
