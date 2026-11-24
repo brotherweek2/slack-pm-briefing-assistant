@@ -36,10 +36,10 @@ function fixture(){
 }
 let f=fixture();f.ctx.startConnectedBriefingRound_('11:00');
 assert.equal(f.sent.length,4);assert.equal(f.job().pendingIds.length,21);assert.equal(f.triggers().length,1);
-f.users.push(['Late PM','U0000000010',true]);
+f.users.push(['Late PM','U0000000009',true]);
 for(let i=0;i<6;i++){f.advance(60000);f.ctx.resumeConnectedBriefingSend();assert.ok(f.triggers().length<=1);}
 assert.equal(f.sent.length,25);assert.equal(new Set(f.sent.map(s=>s.id)).size,25);
-assert.ok(!f.sent.some(s=>s.id==='U0000000010'),'recipient cohort does not expand during retry');
+assert.ok(!f.sent.some(s=>s.id==='U0000000009'),'recipient cohort does not expand during retry');
 assert.equal(f.job().state,'complete');assert.equal(f.triggers().length,0);
 // 회차가 끝나면 관리자 요약을 정확히 한 번 요청한다(중간 배치에서는 보내지 않음).
 assert.equal(f.admin.length,1);assert.equal(f.admin[0].slot,'11:00');assert.equal(f.admin[0].info.total,25);assert.equal(f.admin[0].info.pendingIds.length,0);

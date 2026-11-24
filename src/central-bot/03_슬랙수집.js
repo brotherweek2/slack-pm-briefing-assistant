@@ -413,7 +413,7 @@ function classifySlackMentionMessages_(messages, recipients, members, groupId, o
   });
   const output = [];
   byMessage.forEach(message => {
-    if (pansoriRoute && message.sourceChannel === pansoriRoute.channel && pansoriRoute.threads.some(t => t.ts === message.sourceThreadTs)) {
+    if (pansoriRoute && pansoriRoute.threads.some(t => t.channel === message.sourceChannel && t.ts === message.sourceThreadTs)) {
       output.push(...pansoriMentionRecords_(message, recipients, pansoriRoute));
       return;
     }
@@ -433,7 +433,9 @@ function classifySlackMentionMessages_(messages, recipients, members, groupId, o
         threadKey: message.sourceChannel + '|' + message.sourceThreadTs });
     });
   });
-  return output.sort((a, b) => Number(b.ts) - Number(a.ts) || a.pm.localeCompare(b.pm));
+  // 판소리: 요청 뒤 수신자 본인의 답장이 있으면 '답장함' 표시(33번). 완료 판단은 하지 않는다.
+  const marked = pansoriRoute && typeof markPansoriReplies_ === 'function' ? markPansoriReplies_(output, [...byMessage.values()]) : output;
+  return marked.sort((a, b) => Number(b.ts) - Number(a.ts) || a.pm.localeCompare(b.pm));
 }
 
 /**

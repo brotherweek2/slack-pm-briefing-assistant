@@ -3,7 +3,7 @@ const fixed=new Date('2026-10-19T11:00:00+09:00');
 class FixedDate extends Date{constructor(...a){super(...(a.length?a:[fixed]));}}
 const properties=new Map([['ENABLE_PM_SEND','true'],['ENABLE_BRIEFING_PHRASES','false']]);
 let phase='before-send',sendFailure=false;
-const writes=[],posts=[],logs=[],sendRows=[],users=[['PM A','U0000000003',true]];
+const writes=[],posts=[],logs=[],sendRows=[],users=[['PM A','U0000000002',true]];
 const props={getProperty:k=>properties.get(k)||null,setProperty:(k,v)=>{writes.push({k,v,phase});properties.set(k,v);}};
 const bot={getSheetByName:()=>null};
 const ctx=vm.createContext({briefingLeaveRoutes_:()=>[],Date:FixedDate,console:{log:s=>logs.push(s)},BRIEFING:{timezone:'Asia/Seoul'},
@@ -17,7 +17,7 @@ const ctx=vm.createContext({briefingLeaveRoutes_:()=>[],Date:FixedDate,console:{
   requireBotSheet_:(_b,name)=>({rows:name==='BOT_USERS'?users:name==='BOT_SEND_LOG'?sendRows:[],appendRow:r=>sendRows.push(r)}),
   readBotRows_:s=>s.rows,refreshBotTasks:()=>({pmNames:['PM A']}),saveHaCvDailyHistory_:()=>({}),
   selectHaCvPreviewOwners_:()=>['PM A'],isHaCvBriefingTask_:()=>true,assertFreshPilotTasks_:()=>{},
-  findPilotRecipient_:()=>({id:'U0000000003',enabled:true}),getPilotPmName_:()=> 'PM A',maskPilotId_:()=> 'masked',
+  findPilotRecipient_:()=>({id:'U0000000002',enabled:true}),getPilotPmName_:()=> 'PM A',maskPilotId_:()=> 'masked',
   formatPersonalWorkBriefing_:(_pm,_rows,_day,_trend,slot)=>'WORK '+slot,
   escapeSlack_:s=>String(s),postSlackDm_:(_token,id,message)=>{
     if(sendFailure)throw Error('synthetic post failure');posts.push({id,message});phase='post-success';

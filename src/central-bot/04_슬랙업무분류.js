@@ -200,6 +200,9 @@ function selectPersonalSlackItems_(pm, items, seen, day, slot) {
     // 발송 이력이 없어도 이미 지난 회의 초대는 새 업무로 재노출하지 않는다.
     // 실제 업무 기한 경과나 날짜 불명확 항목은 이 조건으로 숨기지 않는다.
     if (item.pansori && typeof pansoriPastMeetingNotice_ === 'function' && pansoriPastMeetingNotice_(item, day)) return false;
+    // 판소리: 이미 답장한 요청은 처음 한 번만 '답장함'으로 접어 보이고, 회신 대기는 답장할 때까지 매 회차 보인다.
+    if (item.pansori && item.replied) return !seen.includes(slackDigestFingerprint_(item));
+    if (item.pansori && item.awaitingReply) return true;
     if (!seen.includes(slackDigestFingerprint_(item))) return true;
     const due = slackDigestDueDay_(item);
     const actionable = !item.needsReview && !item.notice && !item.informational && item.kind !== '운영 기준';
@@ -224,14 +227,17 @@ function formatPersonalSlackDigest_(items, day, slot, attachedCount) {
   items.forEach(item => {
     const due = slackDigestDueDay_(item);
     const actionable = !item.needsReview && !item.notice && !item.informational && item.kind !== '운영 기준';
-    const key = actionable && due === day ? '오늘 기한' :
+    const key = item.pansori && item.replied ? '판소리 · 답장함' :
+      actionable && due === day ? '오늘 기한' :
       actionable && due === tomorrow && slot === '17:00' ? '내일 기한' :
+      item.pansori && item.awaitingReply ? (item.previouslySent ? '판소리 · 회신 대기(이전 안내)' : '판소리 · 회신 대기') :
       item.previouslySent ? '오늘 요청 · 이전 회차에 안내됨' :
       item.category === 'direct' ? '개인 · 새·변경' : (item.groupLabel || 'BBPM') + ' · 새·변경';
     if (!groups.has(key)) groups.set(key, []);
     // 이전 회차에 이미 자세히 보낸 항목은 링크만 모아 한 줄로 접는다.
-    if (item.previouslySent && key === '오늘 요청 · 이전 회차에 안내됨') {
-      groups.get(key).push('<' + item.url + '|' + escapeSlack_(slackDigestDisplayKeywords_(item)) + '>');
+    if (['오늘 요청 · 이전 회차에 안내됨', '판소리 · 회신 대기(이전 안내)', '판소리 · 답장함'].includes(key)) {
+      const label = item.pansori ? slackDigestSnippet_(item) || slackDigestDisplayKeywords_(item) : slackDigestDisplayKeywords_(item);
+      groups.get(key).push('<' + item.url + '|' + escapeSlack_(label) + '>');
       return;
     }
     const scope = /^오늘|^내일/.test(key) ? '[' + (item.category === 'direct' ? '개인' : (item.groupLabel || 'BBPM')) + '] ' : '';
@@ -245,10 +251,13 @@ function formatPersonalSlackDigest_(items, day, slot, attachedCount) {
       (posted ? ' · 원문 ' + posted : '') + slackDigestDetailLine_(item));
   });
   // 이전 회차에 이미 보낸 오늘 요청은 제목으로만 구분한다(읽음·완료를 뜻하지 않음).
-  ['오늘 기한','내일 기한','개인 · 새·변경','BBPM · 새·변경','판소리 · 새·변경','오늘 요청 · 이전 회차에 안내됨'].forEach(key => {
+  const folded = ['오늘 요청 · 이전 회차에 안내됨', '판소리 · 회신 대기(이전 안내)', '판소리 · 답장함'];
+  ['오늘 기한','내일 기한','개인 · 새·변경','BBPM · 새·변경','판소리 · 새·변경','판소리 · 회신 대기',
+    '판소리 · 회신 대기(이전 안내)','오늘 요청 · 이전 회차에 안내됨','판소리 · 답장함'].forEach(key => {
     if (!groups.has(key)) return;
     const rows = groups.get(key);
-    lines.push('*' + key + '*', ...(key === '오늘 요청 · 이전 회차에 안내됨' ? ['• ' + rows.join(' · ')] : rows));
+    lines.push('*' + key + (folded.includes(key) && key !== '오늘 요청 · 이전 회차에 안내됨' ? ' ' + rows.length + '건' : '') + '*',
+      ...(folded.includes(key) ? ['• ' + rows.join(' · ')] : rows));
   });
   return lines.join('\n');
 }
@@ -268,7 +277,11 @@ function slackDigestDetailLine_(item) {
   if (item.authorName) parts.push(escapeSlack_(slackAuthorShortName_(item.authorName)));
   const snippet = slackDigestSnippet_(item);
   if (snippet) parts.push(slackDigestSnippetText_(snippet));
-  return parts.length ? '\n   ↳ ' + parts.join(' · ') : '';
+  // 판소리: 여러 명 배정 글에서 뽑은 내 담당 줄, "1) 2)" 할 일 목록(33번).
+  const extra = [];
+  if (item.pansoriMine) extra.push('\n   ↳ 내 담당: ' + escapeSlack_(item.pansoriMine));
+  (item.pansoriChecklist || []).forEach(task => extra.push('\n      ☐ ' + escapeSlack_(task)));
+  return (parts.length ? '\n   ↳ ' + parts.join(' · ') : '') + extra.join('');
 }
 
 // 회사 표시 이름이 '이름/팀/아이디' 형식이라 앞의 이름만 쓴다.

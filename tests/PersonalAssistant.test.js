@@ -49,7 +49,7 @@ assert.match(ctx.formatPersonalSlackDigest_([],'2026-10-16','17:00'),/💬 \*Sla
 const row=Array(18).fill('');
 Object.assign(row,{0:'PM_REVIEW|test',1:'PM A',2:'12345',3:'en_US-ja_JP',5:'HT train 검수 AGENT 완료',
   7:'2026-10-17',10:'https://docs.google.com/spreadsheets/d/test/edit#gid=1&range=J2:K2',12:true,13:new FixedDate()});
-const users=[['PM A','U0000000003',true]],rows=[row];
+const users=[['PM A','U0000000002',true]],rows=[row];
 ctx.BOT_WORKBOOK={usersTab:'BOT_USERS',tasksTab:'BOT_TASKS',userHeaders:Array(3),taskHeaders:Array(18)};
 ctx.requiredProperty_=()=> 'test';ctx.SpreadsheetApp={openById:()=>({getSheetByName:()=>null})};
 ctx.requireBotSheet_=(_bot,name)=>({getLastRow:()=>2,getRange:()=>({getValues:()=>name==='BOT_USERS'?users:rows})});

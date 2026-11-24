@@ -4,7 +4,7 @@ const vm = require('node:vm');
 
 // 합성 자료만 사용. 32번 업무일지: BOT_WORKLOG에서 켠 PM에게만, Work Log TASKS를 읽어 10:30·17:00 DM에 한 칸을 붙인다.
 const day = '2026-11-20'; // 금요일 → 그 주 월요일 2026-11-16
-const A = 'U0000000011', B = 'U0000000012', C = 'U0000000013';
+const A = 'U0000000010', B = 'U0000000011', C = 'U0000000012';
 const tasksHead = ['id', 'user_id', 'kind', 'date_key', 'title', 'priority', 'children_json', 'done', 'source', 'template_id', 'revision', 'created_at', 'updated_at', 'deleted'];
 const task = (user, kind, key, title, priority, done, extra = {}) => ['x', user, kind, key, title, priority, extra.children || '[]',
   done ? 'TRUE' : 'FALSE', extra.source || 'manual', '', 1, '', '', extra.deleted ? 'TRUE' : 'FALSE'];

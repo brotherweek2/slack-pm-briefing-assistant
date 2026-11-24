@@ -159,7 +159,7 @@ values.set('SLACK_SNAPSHOT_MAX_AGE_MINUTES','not-a-number');
 assert.throws(()=>fresh(props,bot,at(nowSec+600)),error=>error.code==='INVALID_CONFIG');
 values.delete('SLACK_SNAPSHOT_MAX_AGE_MINUTES');
 assert.throws(()=>fresh(props,bot,at(nowSec-600)),error=>error.code==='INVALID_SNAPSHOT');
-values.set('SLACK_PM_GROUP_ID','S0000000002');
+values.set('SLACK_PM_GROUP_ID','S0000000001');
 assert.throws(()=>fresh(props,bot,at(nowSec+600)),error=>error.code==='CONFIG_CHANGED');
 values.delete('SLACK_PM_GROUP_ID');
 const emptyProps={getProperty:()=>null};

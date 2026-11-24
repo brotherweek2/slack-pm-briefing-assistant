@@ -1,7 +1,7 @@
 const assert=require('node:assert/strict'),fs=require('node:fs'),vm=require('node:vm'),crypto=require('node:crypto');
 const fixed=new Date('2026-10-19T11:00:00+09:00');
 class FixedDate extends Date { constructor(...args){super(...(args.length?args:[fixed]));} }
-const values=new Map(),logs=[],posts=[],sendRows=[],users=[['PM A','U0000000003',true]];
+const values=new Map(),logs=[],posts=[],sendRows=[],users=[['PM A','U0000000002',true]];
 let writes=0,externalCalls=0;
 const props={getProperty:k=>values.get(k)||null,setProperty:(k,v)=>{values.set(k,v);writes++;}};
 const ctx=vm.createContext({Date:FixedDate,console:{log:s=>logs.push(s)},
@@ -27,7 +27,7 @@ assert.ok(catalog.every(x=>x.recommendation && x.cuisine));
 assert.ok(!catalog.some(x=>['삭제된예시 1','삭제된예시 2'].includes(x.name)));
 assert.equal(catalog.find(x=>x.name==='예시식당 54').observed,false);
 for(const name of ['예시식당 45','예시식당 15','예시식당 08','예시식당 07','예시식당 40']) assert.ok(catalog.some(x=>x.name===name));
-const route={pm:'PM A',id:'U0000000003'},day='2026-10-19';
+const route={pm:'PM A',id:'U0000000002'},day='2026-10-19';
 const pick=()=>ctx.pickLunchRecommendation_(props,route,day,'11:00',catalog);
 const first=pick();assert.ok(first);assert.equal(writes,0);
 assert.equal(first.id,pick().id);assert.equal(first.menu,pick().menu);
@@ -61,7 +61,7 @@ for(let i=0;i<50;i++){
   history.push(p.id);ctx.markLunchRecommendationSent_(props,route,p);
 }
 // 11/24 반복 줄이기: 이틀 연속 같은 음식 묶음(예: 한식→국밥)은 나오지 않는다.
-{const groupRoute={id:'U0000000006'};let lastGroup=null;
+{const groupRoute={id:'U0000000005'};let lastGroup=null;
 for(let i=0;i<120;i++){
   const d=new Date(Date.UTC(2026,10,2)+i*86400000).toISOString().slice(0,10);
   const p=ctx.pickLunchRecommendation_(props,groupRoute,d,'11:00',catalog);
@@ -72,7 +72,7 @@ assert.equal(ctx.lunchCuisineGroup_({cuisine:'국밥',category:'식당'}),ctx.lu
 assert.equal(ctx.lunchCuisineGroup_({cuisine:'새 종류',category:'식당'}),'새 종류','unknown cuisine is its own group');
 // 점심 메이트 식당도 참여자의 최근 7곳·직전 묶음을 피하고, 같은 날 추천을 저장한 뒤 다시 계산해도 바뀌지 않는다.
 vm.runInContext(fs.readFileSync('src/central-bot/25_점심메이트.js','utf8'),ctx);
-{const mates=[{pm:'M1',id:'U0000000007'},{pm:'M2',id:'U0000000008'},{pm:'M3',id:'U0000000009'}];const seen={};
+{const mates=[{pm:'M1',id:'U0000000006'},{pm:'M2',id:'U0000000007'},{pm:'M3',id:'U0000000008'}];const seen={};
 for(let i=0;i<60;i++){
   const d=new Date(Date.UTC(2026,10,2)+i*86400000).toISOString().slice(0,10);
   const plan=ctx.lunchMatePlan_(mates,catalog,d,props);
@@ -91,11 +91,11 @@ assert.ok(!ctx.lunchRecommendationStateKey_(route).includes(route.id));
 const diversity=new Set(Array.from({length:40},(_,i)=>ctx.pickLunchRecommendation_(props,{id:'U'+String(i).padStart(8,'0')},day,'11:00',catalog).id));
 assert.ok(diversity.size>15,'PM-specific choices');
 assert.throws(()=>ctx.validateLunchRestaurantRows_([rows[0],rows[0]]),/중복/);
-for(const [index,value] of [[4,'<@U0000000003>'],[8,'javascript:alert(1)'],[9,'2026-02-30'],[11,'TRUE']]){
+for(const [index,value] of [[4,'<@U0000000002>'],[8,'javascript:alert(1)'],[9,'2026-02-30'],[11,'TRUE']]){
   const row=[...rows[0]];row[index]=value;assert.throws(()=>ctx.validateLunchRestaurantRows_([row]),/형식/);
 }
 const pending=[...rows[0]];pending[10]='pending';
-assert.equal(ctx.pickLunchRecommendation_(props,{id:'U0000000005'},day,'11:00',ctx.validateLunchRestaurantRows_([pending])),null,'enabling pending rows cannot bypass verification');
+assert.equal(ctx.pickLunchRecommendation_(props,{id:'U0000000004'},day,'11:00',ctx.validateLunchRestaurantRows_([pending])),null,'enabling pending rows cannot bypass verification');
 ctx.assertBotHeaders_=()=>{};ctx.readBotRows_=s=>s.rows;
 assert.equal(ctx.readLunchRestaurantCatalog_({getSheetByName:()=>null}).length,75);
 assert.equal(ctx.readLunchRestaurantCatalog_({getSheetByName:()=>({rows:[],getLastRow:()=>1})}).length,0,'empty sheet does not resurrect defaults');

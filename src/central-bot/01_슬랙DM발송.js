@@ -249,6 +249,10 @@ function sendPmBriefings_(updatedTest, includeSlack, scheduledSlot, _unused, del
         if (merged) message = merged.text;
         slackSection = slackFailure ? '\n\n💬 *Slack*\n⚠️ Slack 확인사항을 읽어오지 못했습니다 — ' + slackFailure :
           formatPersonalSlackDigest_(merged.rest, day, effectiveSlot, merged.attached);
+        // 판소리 위클리 당일 10:30: 회의록 업데이트 요청을 회의 시각과 함께 한 줄로(33번, 판소리 수신자만 해당)
+        if (!slackFailure && typeof pansoriMeetingPrepLine_ === 'function') {
+          slackSection += pansoriMeetingPrepLine_(props, route, slackItems, day, effectiveSlot);
+        }
       }
       // 월요일 오전·금요일 마무리 DM에만 업무 아래에 주간 안내를 붙인다.
       message += formatWeeklyOutlook_(route.pm, rows, day, effectiveSlot);
@@ -470,6 +474,7 @@ function previewPersonalAssistantBriefing_(slot) {
     const merged = attachSlackToWorkLines_(message, selectPersonalSlackItems_(route.pm, items, seen, day, slot), day);
     message = merged.text;
     slackSection = formatPersonalSlackDigest_(merged.rest, day, slot, merged.attached);
+    if (typeof pansoriMeetingPrepLine_ === 'function') slackSection += pansoriMeetingPrepLine_(props, route, items, day, slot);
     slackAsOf = Utilities.formatDate(new Date(snapshot.meta.newest * 1000), BRIEFING.timezone, 'yyyy-MM-dd HH:mm');
   } catch (error) { slackSection = '\n\n💬 *Slack*\n⚠️ Slack 확인사항을 읽어오지 못했습니다 — ' + describeSlackFailure_(error, props); }
   message += formatWeeklyOutlook_(route.pm, rows, day, slot);

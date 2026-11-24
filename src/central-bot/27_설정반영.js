@@ -32,6 +32,9 @@ const BOT_SETTINGS = Object.freeze({tab:'BOT_SETTINGS', headers:['setting', 'val
     ENABLE_PERSONAL_LEAVE_SKIP:{note:'false면 연차인 PM에게도 정기 DM 보내기'},
     ENABLE_TASK_DONE:{note:'false면 DM 업무 줄의 ✅ 완료 버튼 끄기'},
     ENABLE_WORKLOG_BRIEFING:{note:'true면 BOT_WORKLOG에서 켠 PM의 10:30·17:00 DM에 Work Log 업무일지 칸 표시'},
+    ENABLE_PANSORI_READ:{note:'true면 PANSORI_THREADS의 판소리 스레드를 읽어 PANSORI_RECIPIENT_IDS 수신자 DM에 표시'},
+    PANSORI_THREADS:{note:'판소리에서 읽을 Slack 스레드 링크(메시지 링크 복사). 여러 개는 쉼표로 구분, 최대 20개. 비우면 판소리 읽기 건너뜀',
+      pattern:/^(?:\s*https:\/\/[a-z0-9-]+\.slack\.com\/archives\/[CG][A-Z0-9]{8,}\/p\d{16,}(?:\?[^\s,]*)?\s*(?:,|$))+$|^삭제$/i},
     WORKLOG_SPREADSHEET_ID:{note:'Work Log 시트 주소 또는 ID(TASKS 탭을 읽기만 함)', pattern:/^(https:\/\/docs\.google\.com\/spreadsheets\/d\/[A-Za-z0-9_-]{20,}.*|[A-Za-z0-9_-]{20,}|삭제)$/},
   }});
 

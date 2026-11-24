@@ -17,7 +17,7 @@ for(const slot of ['11:00','17:00']){
 }
 const values=new Map();let writes=0;
 const props={getProperty:key=>values.get(key)||null,setProperty:(key,value)=>{writes++;values.set(key,value);}};
-const route={pm:'PM A',id:'U0000000003'};
+const route={pm:'PM A',id:'U0000000002'};
 const first=ctx.pickBriefingPhrase_(props,route,'2026-10-19','11:00',catalog);
 assert.equal(writes,0,'selection and preview never consume the phrase');
 assert.equal(first.id,ctx.pickBriefingPhrase_(props,route,'2026-10-19','11:00',catalog).id);
@@ -45,7 +45,7 @@ for(let day=0;day<100;day++){
 assert.ok(familyHistory.filter((family,i)=>familyHistory.slice(Math.max(0,i-20),i).includes(family)).length<familyHistory.length/4,
   'most picks still avoid the last 20 sentences');
 // 아침 한마디는 어제와 같은 말투가 이어지지 않는다(11/24 반복 줄이기). 17:00은 null.
-{const themeRoute={pm:'PM T',id:'U0000000005'};let lastTheme=null;
+{const themeRoute={pm:'PM T',id:'U0000000004'};let lastTheme=null;
 for(let day=0;day<120;day++){
   const date=new Date(Date.UTC(2026,10,2)+day*86400000).toISOString().slice(0,10);
   for(const slot of ['11:00','17:00']){
@@ -64,7 +64,7 @@ assert.ok(diversity.size>20,'choices are recipient-specific, not one shared dail
 assert.throws(()=>ctx.validateBriefingPhraseRows_([rows[0],rows[0]]),/중복/);
 assert.throws(()=>ctx.validateBriefingPhraseRows_([[...rows[0].slice(0,4),'line\nbreak',true]]),/형식/);
 assert.throws(()=>ctx.validateBriefingPhraseRows_([[...rows[0].slice(0,5),'TRUE']]),/형식/);
-assert.throws(()=>ctx.validateBriefingPhraseRows_([[...rows[0].slice(0,4),'<@U0000000003>',true]]),/형식/);
+assert.throws(()=>ctx.validateBriefingPhraseRows_([[...rows[0].slice(0,4),'<@U0000000002>',true]]),/형식/);
 ctx.assertBotHeaders_=()=>{};ctx.readBotRows_=()=>rows;
 assert.equal(ctx.readBriefingPhraseCatalog_({getSheetByName:()=>null}).length,80,'safe built-in bank before optional setup');
 assert.equal(ctx.readBriefingPhraseCatalog_({getSheetByName:()=>({getLastRow:()=>1001})}).length,80);
