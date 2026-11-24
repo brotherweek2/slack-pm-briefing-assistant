@@ -152,9 +152,16 @@ function classifySlackDigest_(record) {
 
 // 원문에 명시된 날짜/시간 표현만 발췌한다. 상대 날짜를 임의의 날짜로 변환하지 않는다.
 function slackDigestDeadline_(line) {
-  const match = String(line).match(/(?:\d{4}[-/.]\d{1,2}[-/.]\d{1,2}|\d{1,2}[/.]\d{1,2}|\d{1,2}월\s*\d{1,2}일|오늘|내일|익일)?\s*(?:\([월화수목금토일](?:요일)?\))?\s*(?:(?:오전|오후)\s*)?\d{1,2}시(?:\s*\d{1,2}분)?\s*(?:까지|전)?|(?:\d{4}[-/.]\d{1,2}[-/.]\d{1,2}|\d{1,2}[/.]\d{1,2}|\d{1,2}월\s*\d{1,2}일|오늘|내일|익일)\s*(?:\([월화수목금토일](?:요일)?\))?\s*(?:퇴근\s*(?:전|까지)|까지|전)?|퇴근\s*(?:전|까지)/);
+  // 한 줄에 시각·날짜가 여러 개면 요청 표현(부탁·해 주시면 등) 바로 앞의 것을 기한으로 본다(11/24).
+  // 예: "4시까지 검수 진행 … 5시 전까지만 업데이트 해주시면" → 5시 전. 요청 표현이 없으면 기존처럼 첫 번째.
+  const text = String(line);
+  const all = [...text.matchAll(new RegExp(SLACK_DEADLINE_PATTERN.source, 'g'))];
+  const ask = text.search(/부탁|해\s*주|주시면|주세요|바랍니다|요청/);
+  const before = ask < 0 ? [] : all.filter(hit => hit.index < ask);
+  const match = all.length > 1 && before.length ? before[before.length - 1] : all[0];
   return match ? match[0].trim() : line;
 }
+const SLACK_DEADLINE_PATTERN = /(?:\d{4}[-/.]\d{1,2}[-/.]\d{1,2}|\d{1,2}[/.]\d{1,2}|\d{1,2}월\s*\d{1,2}일|오늘|내일|익일)?\s*(?:\([월화수목금토일](?:요일)?\))?\s*(?:(?:오전|오후)\s*)?\d{1,2}시(?:\s*\d{1,2}분)?\s*(?:까지|전)?|(?:\d{4}[-/.]\d{1,2}[-/.]\d{1,2}|\d{1,2}[/.]\d{1,2}|\d{1,2}월\s*\d{1,2}일|오늘|내일|익일)\s*(?:\([월화수목금토일](?:요일)?\))?\s*(?:퇴근\s*(?:전|까지)|까지|전)?|퇴근\s*(?:전|까지)/;
 
 function buildSlackDigestItems_(records) {
   const groups = new Map();
@@ -200,9 +207,8 @@ function selectPersonalSlackItems_(pm, items, seen, day, slot) {
     // 발송 이력이 없어도 이미 지난 회의 초대는 새 업무로 재노출하지 않는다.
     // 실제 업무 기한 경과나 날짜 불명확 항목은 이 조건으로 숨기지 않는다.
     if (item.pansori && typeof pansoriPastMeetingNotice_ === 'function' && pansoriPastMeetingNotice_(item, day)) return false;
-    // 판소리: 이미 답장한 요청은 처음 한 번만 '답장함'으로 접어 보이고, 회신 대기는 답장할 때까지 매 회차 보인다.
-    if (item.pansori && item.replied) return !seen.includes(slackDigestFingerprint_(item));
-    if (item.pansori && item.awaitingReply) return true;
+    // 14시는 새 항목만, 17시는 회신 요청을 다시 안내한다. 실제 회신/완료는 추정하지 않는다.
+    if (item.pansori && item.awaitingReply) return slot === '17:00' || !seen.includes(slackDigestFingerprint_(item));
     if (!seen.includes(slackDigestFingerprint_(item))) return true;
     const due = slackDigestDueDay_(item);
     const actionable = !item.needsReview && !item.notice && !item.informational && item.kind !== '운영 기준';
@@ -227,15 +233,14 @@ function formatPersonalSlackDigest_(items, day, slot, attachedCount) {
   items.forEach(item => {
     const due = slackDigestDueDay_(item);
     const actionable = !item.needsReview && !item.notice && !item.informational && item.kind !== '운영 기준';
-    const key = item.pansori && item.replied ? '판소리 · 답장함' :
-      actionable && due === day ? '오늘 기한' :
+    const key = actionable && due === day ? '오늘 기한' :
       actionable && due === tomorrow && slot === '17:00' ? '내일 기한' :
-      item.pansori && item.awaitingReply ? (item.previouslySent ? '판소리 · 회신 대기(이전 안내)' : '판소리 · 회신 대기') :
+      item.pansori && item.awaitingReply ? (item.previouslySent ? '판소리 · 회신 요청(이전 안내)' : '판소리 · 회신 요청') :
       item.previouslySent ? '오늘 요청 · 이전 회차에 안내됨' :
       item.category === 'direct' ? '개인 · 새·변경' : (item.groupLabel || 'BBPM') + ' · 새·변경';
     if (!groups.has(key)) groups.set(key, []);
     // 이전 회차에 이미 자세히 보낸 항목은 링크만 모아 한 줄로 접는다.
-    if (['오늘 요청 · 이전 회차에 안내됨', '판소리 · 회신 대기(이전 안내)', '판소리 · 답장함'].includes(key)) {
+    if (['오늘 요청 · 이전 회차에 안내됨', '판소리 · 회신 요청(이전 안내)'].includes(key)) {
       const label = item.pansori ? slackDigestSnippet_(item) || slackDigestDisplayKeywords_(item) : slackDigestDisplayKeywords_(item);
       groups.get(key).push('<' + item.url + '|' + escapeSlack_(label) + '>');
       return;
@@ -251,9 +256,9 @@ function formatPersonalSlackDigest_(items, day, slot, attachedCount) {
       (posted ? ' · 원문 ' + posted : '') + slackDigestDetailLine_(item));
   });
   // 이전 회차에 이미 보낸 오늘 요청은 제목으로만 구분한다(읽음·완료를 뜻하지 않음).
-  const folded = ['오늘 요청 · 이전 회차에 안내됨', '판소리 · 회신 대기(이전 안내)', '판소리 · 답장함'];
-  ['오늘 기한','내일 기한','개인 · 새·변경','BBPM · 새·변경','판소리 · 새·변경','판소리 · 회신 대기',
-    '판소리 · 회신 대기(이전 안내)','오늘 요청 · 이전 회차에 안내됨','판소리 · 답장함'].forEach(key => {
+  const folded = ['오늘 요청 · 이전 회차에 안내됨', '판소리 · 회신 요청(이전 안내)'];
+  ['오늘 기한','내일 기한','개인 · 새·변경','BBPM · 새·변경','판소리 · 새·변경','판소리 · 회신 요청',
+    '판소리 · 회신 요청(이전 안내)','오늘 요청 · 이전 회차에 안내됨'].forEach(key => {
     if (!groups.has(key)) return;
     const rows = groups.get(key);
     lines.push('*' + key + (folded.includes(key) && key !== '오늘 요청 · 이전 회차에 안내됨' ? ' ' + rows.length + '건' : '') + '*',

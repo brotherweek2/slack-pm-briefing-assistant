@@ -4,7 +4,7 @@
  * - previewPansoriBriefing(): 지정 두 스레드를 읽어 본인 분류 결과 확인. 저장·DM 없음.
  * - ENABLE_PANSORI_READ=true, PANSORI_RECIPIENT_IDS=["Slack ID"], PANSORI_THREADS(스레드 링크, 쉼표·줄바꿈 구분) 설정 시 활성.
  *   스레드 링크는 코드에 두지 않고 BOT_SETTINGS → applyBotSettings로 넣는다. 없으면 판소리 읽기만 건너뛴다.
- * - 11/24 고도화: ① 한 글에 여러 담당자가 있으면 내 줄만 뽑기 ② 요청 뒤 내 답장이 있으면 '답장함'
+ * - 11/24 고도화: 담당자 아래 설명·기한 보존. 답장 자동 판정·숨김 제거.
  *   ③ 스레드 목록 설정화 ④ 위클리 당일 10:30 '회의 준비' 줄 ⑤ "1) 2)" 할 일 목록 나누기 ⑥ 회신 대기 표시
  * - 수신자 명단에 있는 사람에게만 개인 요청·@here/@channel 공통 안내를 제공한다.
  * - 원본 시트·Slack 메시지·캘린더는 변경하지 않는다.
@@ -59,7 +59,7 @@ function previewPansoriBriefing() {
       if (result.has_more && !cursor) throw new Error('조회가 불완전합니다. 미리보기 중지');
     } while (cursor);
   });
-  const records = markPansoriReplies_(messages.flatMap(m => pansoriMentionRecords_(m,recipients,route)), messages);
+  const records = messages.flatMap(m => pansoriMentionRecords_(m,recipients,route));
   const items = buildSlackDigestItems_(records);
   console.log(formatPersonalSlackDigest_(items,Utilities.formatDate(new Date(),BRIEFING.timezone,'yyyy-MM-dd'),'11:00',0));
   console.log('판소리 지정 스레드 2개 조회·본인 분류 완료 | 저장·Slack 발송 없음');
@@ -101,19 +101,30 @@ function pansoriMentionRecords_(message, recipients, route) {
     scoped.forEach((section, index) => {
       const owners = ids(section);
       const direct = owners.includes(recipient.id);
-      if (!direct && !(common && !owners.length)) return;
+      // @here 글 아래에 특정 사람에게 따로 맡긴 줄이 섞여 있으면, 멘션받지 않은 사람에게는 @here 부분만 보인다(11/24).
+      // 예: "@here 회의록 5시 전까지 업데이트" + "@A 님, 소음 테스트 요약 부탁" → 나머지는 회의록 부분만.
+      const shared = !direct && common && owners.length ? pansoriHereLines_(section) : '';
+      if (!direct && !(common && (!owners.length || shared))) return;
       // ① 여러 사람이 한 글에 배정되면 내 멘션 줄과 그 위 소제목만 남긴다. 내 줄에도 다른 사람이 같이 있으면 원문 확인.
       const own = direct && owners.length > 1 ? pansoriOwnLines_(section, recipient.id) : null;
       const ambiguous = owners.length > 1 && !own;
       output.push({pm:recipient.pm, recipientId:recipient.id, category:direct ? 'direct' : 'group', groupLabel:'판소리',
         pansori:true, pansoriAmbiguous:ambiguous, pansoriMine:own ? own.summary : '', ts:String(message.ts),
-        text:own ? own.text : section, user:String(message.user || ''), threadParentText:String(message.threadParentText || ''),
+        text:own ? own.text : shared || section, user:String(message.user || ''), threadParentText:String(message.threadParentText || ''),
         threadKey:message.sourceChannel + '|' + message.sourceThreadTs + '|section:' + index,
         url:'https://' + String(message.sourceHost || 'slack.com') + '/archives/' + message.sourceChannel + '/p' +
           String(message.ts).replace('.','') + '?thread_ts=' + message.sourceThreadTs});
     });
   });
   return output;
+}
+
+// @here가 있는 앞부분(다른 사람을 처음 멘션하는 줄 전까지)만 돌려준다. 그 부분에 @here가 없으면 ''.
+function pansoriHereLines_(section) {
+  const lines = String(section || '').split('\n');
+  const cut = lines.findIndex(line => /<@[UW][A-Z0-9]+/.test(line) && !/<!here>|<!channel>/.test(line));
+  const head = (cut < 0 ? lines : lines.slice(0, cut)).join('\n').trim();
+  return /<!here>|<!channel>/.test(head) ? head : '';
 }
 
 function refinePansoriDigest_(item) {
@@ -126,8 +137,8 @@ function refinePansoriDigest_(item) {
   if (item.pansoriAmbiguous) { item.deadline = ''; item.summary = '담당 업무·기한 원문 확인'; }
   // ⑤ "1) … 2) …" 할 일 목록은 항목별로 나눠 DM에 한 줄씩 보인다(최대 5개).
   item.pansoriChecklist = pansoriChecklist_(text);
-  // ⑥ 나에게 직접 온 요청·질문인데 아직 내 답장이 없으면 회신 대기. 답장 여부만 보고 완료는 판단하지 않는다.
-  item.awaitingReply = item.category === 'direct' && !item.replied &&
+  // 회신을 요청하는 표현만 찾는다. 실제 회신·완료 여부는 알 수 없다.
+  item.awaitingReply = item.category === 'direct' &&
     /부탁|전달\s*(?:주|해\s*주)|확인\s*(?:주|해\s*주)|회신|답변|가능하실|괜찮으실|어떠실|선호/.test(slackDigestPlainSafe_(text));
   // 완료와 요청이 함께 있을 수 있으므로 자동 완료 처리하지 않는다.
   return item;
@@ -151,6 +162,14 @@ function pansoriOwnLines_(section, id) {
     const others = Array.from(line.matchAll(/<@([UW][A-Z0-9]+)(?:\|[^>]+)?>/g), m => m[1]).filter(other => other !== id);
     if (others.length) { ownLines.push(null); return; }
     picked.add(i); ownLines.push(i);
+    // 내 담당 줄 아래의 설명·기한을 보존한다. 다른 담당자의 구간은 포함하지 않는다.
+    for (let j = i + 1; j < lines.length; j++) {
+      if (!lines[j].trim()) continue;
+      if (indent(lines[j]) <= indent(line)) break;
+      const other = Array.from(lines[j].matchAll(/<@([UW][A-Z0-9]+)(?:\|[^>]+)?>/g), m => m[1]).some(value => value !== id);
+      if (other) { ownLines.push(null); break; }
+      picked.add(j);
+    }
     let level = indent(line);
     for (let j = i - 1; j >= 0 && level > 0; j--) {
       if (!lines[j].trim()) continue;
@@ -181,26 +200,14 @@ function pansoriChecklist_(text) {
   return items.length >= 2 ? items.map(item => item.n + ') ' + item.text) : [];
 }
 
-// ② 요청 뒤에 수신자 본인이 같은 스레드에 글을 남겼으면 답장한 것으로 표시한다.
-// 요청자가 분명하면 그 사람을 멘션한 답장만 인정한다(다른 요청에 단 답장으로 오인하지 않게).
-function markPansoriReplies_(records, messages) {
-  return records.map(record => {
-    if (!record.pansori || !record.recipientId) return record;
-    const thread = record.threadKey.split('|section:')[0];
-    const reply = messages.find(m => (m.sourceChannel + '|' + m.sourceThreadTs) === thread &&
-      String(m.user || '') === record.recipientId && Number(m.ts) > Number(record.ts) &&
-      (!record.user || record.user === record.recipientId ||
-        new RegExp('<@' + record.user + '(?:\\|[^>]+)?>').test(String(m.text || ''))));
-    return reply ? Object.assign({}, record, {replied:true, repliedTs:String(reply.ts)}) : record;
-  });
-}
+// 답장으로 개별 요청의 처리 상태를 추정하지 않는다.
 
 // ④ 위클리 당일 10:30: 오늘 캘린더에 판소리 회의가 있고, 아직 답하지 않은 회의록 요청이 있으면 한 줄 안내.
 // 캘린더는 PM이 연결한 저장본(BOT_CALENDAR_PERSONAL)을 읽기만 한다. 못 읽으면 줄을 생략한다.
 function pansoriMeetingPrepLine_(props, route, items, day, slot) {
   if (slot !== '11:00') return '';
   const since = Date.parse(day + 'T00:00:00+09:00') - 7 * 86400000;
-  const requests = items.filter(item => item.pm === route.pm && item.pansori && !item.replied &&
+  const requests = items.filter(item => item.pm === route.pm && item.pansori &&
     /회의록/.test(slackDigestPlainSafe_(item.text)) && Number(item.ts) * 1000 >= since);
   if (!requests.length) return '';
   try {
