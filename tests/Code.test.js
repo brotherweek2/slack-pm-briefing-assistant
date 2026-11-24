@@ -98,10 +98,10 @@ for(const name of ['preview11','preview16','send11','send16','installDailyTrigge
   assert.equal(vm.runInContext('typeof '+name,context),'undefined','retired entry removed: '+name);
 }
 assert.equal(posts.length,0,'collectors never send messages');
-context.postSlackDm_('test-only','U0000000002','synthetic briefing');
+context.postSlackDm_('test-only','U0000000003','synthetic briefing');
 assert.equal(posts.length,1);
 assert.equal(posts[0].url,'https://slack.com/api/chat.postMessage');
-assert.equal(JSON.parse(posts[0].options.payload).channel,'U0000000002');
+assert.equal(JSON.parse(posts[0].options.payload).channel,'U0000000003');
 assert.equal(context.escapeSlack_('<a>&'), '&lt;a&gt;&amp;');
 assert.throws(()=>context.requiredProperty_({getProperty:()=>null},'EXAMPLE'),/EXAMPLE/);
 console.log('Linked source collectors and Slack helper checks passed');

@@ -44,6 +44,10 @@ function fixture(options) {
   });
   for (const file of ['29_오후업데이트.js', '28_공휴일.js', '23_운영알림.js', '25_점심메이트.js'])
     vm.runInContext(fs.readFileSync('src/central-bot/' + file, 'utf8'), ctx);
+  // 점심 메이트 수신자 확인용 실제 연결 판정(19번). 등록 명단·저장소는 위 합성 값으로 되돌린다.
+  vm.runInContext(fs.readFileSync('src/central-bot/19_개인캘린더연결.js', 'utf8'), ctx);
+  ctx.selfCalendarRegistry_ = () => registry;
+  ctx.selfCalendarStore_ = () => ({getLastRow: () => cache.length + 1, getRange: () => ({getValues: () => cache})});
   // 28번의 실제 휴일 캘린더 조회 대신 합성 휴일표를 쓴다.
   ctx.publicHolidayName_ = day => (options.holidays || {})[day] || '';
   return {ctx, props, values, logs};
@@ -84,8 +88,18 @@ assert.match(summary.text, /• 연차: PM A/);
 const today = kst(new Date(), '', 'yyyy-MM-dd');
 f = fixture({props: {LUNCH_MATE_U00000001: 'on', LUNCH_MATE_U00000002: 'on'}, cache: [['a@example.test', JSON.stringify({connected: true,
   pm: 'PM A', slackId: 'U00000001', sentAt: t(today, '09:00'), events: [{key: 'l', title: '연차', start: t(today, '00:00'),
-    end: t(today, '00:00') + 86400000, allDay: true, status: '', source: 'personal', audience: 'personal'}]})]]});
+    end: t(today, '00:00') + 86400000, allDay: true, status: '', source: 'personal', audience: 'personal'}]})],
+  ['b@example.test', JSON.stringify({connected: true, pm: 'PM B', slackId: 'U00000002', sentAt: t(today, '09:00'), events: []})]]});
 assert.deepEqual(f.ctx.lunchMateParticipants_(f.props, [['PM A', 'U00000001', true], ['PM B', 'U00000002', true]]).map(p => p.pm), ['PM B']);
+// 3-1) 퇴사 등으로 캘린더 연결이 없는 사람(PM C: 저장값 없음)은 메이트를 켜 두었어도 남의 DM에 이름이 나오지 않는다.
+f.values.set('LUNCH_MATE_U00000003', 'on');
+assert.deepEqual(f.ctx.lunchMateParticipants_(f.props, [['PM B', 'U00000002', true], ['PM C', 'U00000003', true]]).map(p => p.pm), ['PM B'],
+  'not-connected PM is dropped from lunch mates');
+// 3-2) 연결 상태를 못 읽으면 잘못된 이름을 보이지 않도록 그날은 메이트를 비운다.
+const realFilter = f.ctx.selfCalendarFilterRoutes_;
+f.ctx.selfCalendarFilterRoutes_ = () => { throw new Error('read failed'); };
+assert.equal(f.ctx.lunchMateParticipants_(f.props, [['PM B', 'U00000002', true]]).length, 0, 'unknown connection state shows no mates');
+f.ctx.selfCalendarFilterRoutes_ = realFilter;
 
 // 4) 직전 회차: 14:00→같은 날 10:30, 17:00→같은 날 14:00, 10:30→직전 근무일 17:00(주말·공휴일 건너뜀).
 f = fixture({holidays: {'2026-11-02': '임시 공휴일'}});

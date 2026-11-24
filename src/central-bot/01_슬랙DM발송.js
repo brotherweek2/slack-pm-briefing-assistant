@@ -194,6 +194,12 @@ function sendPmBriefings_(updatedTest, includeSlack, scheduledSlot, _unused, del
     timing.slackMs=Date.now()-slackStarted;
     const prepareStarted=Date.now();
     const prior = retainBriefingSendLog_(log, readBotRows_(log, BOT_WORKBOOK.logHeaders.length), day);
+    // 32번 업무일지: BOT_WORKLOG에서 켠 PM에게만 10:30·17:00 DM에 한 칸. Work Log 시트는 이번 발송에 한 번만 읽는다.
+    let workLog = null;
+    if (props.getProperty('ENABLE_WORKLOG_BRIEFING') === 'true') {
+      try { workLog = loadWorkLogBriefing_(props, bot, routes); }
+      catch (error) { console.log('업무일지 준비 생략 | ' + error.message); }
+    }
     const packets = routes.map(route => {
      // 한 PM의 문안 준비 오류가 다른 PM 발송을 막지 않게 PM별로 감싼다.
      try {
@@ -246,6 +252,8 @@ function sendPmBriefings_(updatedTest, includeSlack, scheduledSlot, _unused, del
       }
       // 월요일 오전·금요일 마무리 DM에만 업무 아래에 주간 안내를 붙인다.
       message += formatWeeklyOutlook_(route.pm, rows, day, effectiveSlot);
+      // 업무일지 칸(켠 PM만, 14:00 제외). 시트 업무·Slack과 합치지 않는다.
+      if (workLog) message += formatWorkLogForRoute_(workLog, route.id, day, effectiveSlot);
       // 기준 시각은 정보 영역 끝에 한 줄로 둔다. 점심·한마디는 그 아래에 붙는다.
       slackSection += formatBriefingBasis_(new Date(), slackAsOf, day,
         props.getProperty('ENABLE_CALENDAR_BRIEFING') === 'true') + sourceNote;
@@ -318,7 +326,7 @@ function sendPmBriefings_(updatedTest, includeSlack, scheduledSlot, _unused, del
             if (!lunchMate) {
               // 정기 발송은 그날 첫 묶음 명단을 함께 쓴다. 시험 발송은 그 명단을 읽기만 한다(오늘 실제 DM과 같은 메이트).
               const participants = lunchMateTodayParticipants_(props, userRows, day, !scheduledSlot);
-              lunchMate = {participants, plan:lunchMatePlan_(participants, lunchCatalog, day)};
+              lunchMate = {participants, plan:lunchMatePlan_(participants, lunchCatalog, day, props)};
             }
             lunch = applyLunchMate_(lunch, lunchMate.plan, route, day);
           }
@@ -385,10 +393,8 @@ function formatBriefingBasis_(now, slackAsOf, day, withCalendar, preview) {
   const slack = String(slackAsOf || '');
   const slackTime = !slack ? '' : slack.slice(0, 10) === day ? slack.slice(11, 16) :
     slack.slice(5, 7) + '/' + slack.slice(8, 10) + ' ' + slack.slice(11, 16);
-  // Slack은 어느 채널을 읽었는지 작게 밝힌다(예: Slack #pm_team_channel 10:20).
-  const channels = (BRIEFING.slackChannels || []).map(name => '#' + name).join(' ');
   return '\n\n_' + (preview ? '미리보기 · ' : '') + (withCalendar ? '업무·회의 ' : '업무 ') +
-    Utilities.formatDate(now, BRIEFING.timezone, 'HH:mm') + (slackTime ? ' · Slack ' + (channels ? channels + ' ' : '') + slackTime : '') + ' 기준_';
+    Utilities.formatDate(now, BRIEFING.timezone, 'HH:mm') + (slackTime ? ' · Slack ' + slackTime : '') + ' 기준_';
 }
 
 // DM에는 짧은 사유만 쓴다. 완료본이 없거나 오래됐으면 마지막 수집 오류로 원인을 좁힌다.
@@ -478,7 +484,7 @@ function previewPersonalAssistantBriefing_(slot) {
     try {
       const catalog = readLunchRestaurantCatalog_(bot);
       let lunch = pickLunchRecommendation_(props,route,day,slot,catalog);
-      const participants = lunchMateTodayParticipants_(props, users, day, true), plan = lunchMatePlan_(participants, catalog, day);
+      const participants = lunchMateTodayParticipants_(props, users, day, true), plan = lunchMatePlan_(participants, catalog, day, props);
       if (lunch) lunch = applyLunchMate_(lunch, plan, route, day);
       message += formatLunchRecommendation_(lunch) + (lunch ? formatLunchMateLine_(route, plan, participants) : '');
     } catch (error) { console.log('점심 추천 미리보기 생략: 식당 목록·추천 이력 확인 필요'); }

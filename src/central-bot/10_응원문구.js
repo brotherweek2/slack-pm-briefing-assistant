@@ -2,7 +2,8 @@
  * 10. 응원문구 — 오늘의 한마디 고르기(반복 방지)
  *
  * 알아둘 것
- * - BOT_PHRASES 탭이 없으면 코드 문구(11번 파일)를 쓴다. 같은 날·회차·사람은 같은 문구.
+ * - BOT_PHRASES 탭이 없으면 코드 문구(11번 파일)를 쓴다. 같은 날·사람은 같은 문구.
+ * - 11/24부터 하루 한 번, 10:30 아침 DM에만 넣는다(17:00 문구는 보관만). 어제와 같은 말투는 피한다.
  *
  * 직접 실행 (🔍 조회만 · ⚠️ 보내거나 바꿈 · ⏰ 자동 호출)
  * - ⚠️ setupBotPhrases(): BOT_PHRASES 탭을 만들고 기본 완성형 문구 80개를 채운다(있으면 보존)
@@ -14,7 +15,7 @@
  * - readBriefingPhraseCatalog_(bot): BOT_PHRASES를 읽고 탭이 없으면 코드 기본 목록을 사용한다
  * - briefingPhraseStateKey_(route,slot): 수신자와 회차를 해시로 바꿔 이력 속성 이름을 만든다
  * - readBriefingPhraseState_(props,key): 최근 문구·핵심 문장과 당일 선택 이력을 읽고 형식을 검증한다
- * - pickBriefingPhrase_(props,route,day,slot,catalog): 수신자·날짜·회차별로 최근 반복을 피하며 당일 같은 문구를 유지한다
+ * - pickBriefingPhrase_(props,route,day,slot,catalog): 수신자·날짜·회차별로 최근 문장·직전 말투를 피하며 당일 같은 문구를 유지한다
  * - formatBriefingPhrase_(selection): 오전/오후 표식과 선택 문장을 브리핑 끝 문안으로 만든다
  * - markBriefingPhraseSent_(props,route,selection): 실제 DM 성공 후 당일 선택과 제한된 최근 이력을 속성에 저장한다
  */
@@ -108,6 +109,8 @@ function readBriefingPhraseState_(props,key) {
 function pickBriefingPhrase_(props,route,day,slot,catalog) {
   if (props.getProperty('ENABLE_BRIEFING_PHRASES') === 'false') return null;
   if (!['11:00','17:00'].includes(slot) || !/^\d{4}-\d{2}-\d{2}$/.test(day)) throw new Error('한마디 회차·날짜 오류');
+  // 11/24 피드백 반영: 한마디는 하루 한 번, 아침(10:30) DM에만 넣는다. 17:00 문구는 탭에 남겨 두되 보내지 않는다.
+  if (slot !== '11:00') return null;
   const state = readBriefingPhraseState_(props,briefingPhraseStateKey_(route,slot));
   const active = catalog.filter(item => item.enabled && item.slot === slot);
   if (state.last && state.last.day === day) {
@@ -122,6 +125,18 @@ function pickBriefingPhrase_(props,route,day,slot,catalog) {
   if (!candidates.length) candidates = active.filter(item => !families.has(item.family));
   if (!candidates.length) candidates = active.filter(item => !ids.has(item.id));
   if (!candidates.length) candidates = active;
+  // 같은 말투가 이어지지 않게: 직전(어제 아침) 문구의 말투(주제)는 빼고 고른다.
+  // 최근 20개 제외만으로 후보가 한 말투에 몰리면, 제외 범위를 10개·5개로 좁혀서라도 다른 말투를 찾는다.
+  const recentThemes = new Set();
+  const lastItem = state.last && catalog.find(item => item.id === state.last.id);
+  if (lastItem) recentThemes.add(lastItem.theme);
+  let freshTheme = candidates.filter(item => !recentThemes.has(item.theme));
+  for (const window of [10,5]) {
+    if (freshTheme.length) break;
+    const near = new Set(state.history.slice(-window).map(item => item.family));
+    freshTheme = active.filter(item => !near.has(item.family) && !recentThemes.has(item.theme));
+  }
+  if (freshTheme.length) candidates = freshTheme;
   const bytes = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256,JSON.stringify([route.id,day,slot]));
   const seed = Array.from(bytes).slice(0,4).reduce((value,byte) => value*256+(byte+256)%256,0);
   return {...candidates[seed % candidates.length],day,slot};

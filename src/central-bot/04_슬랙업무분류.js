@@ -158,10 +158,13 @@ function slackDigestDeadline_(line) {
 
 function buildSlackDigestItems_(records) {
   const groups = new Map();
-  records.map(classifySlackDigest_).filter(Boolean)
+  records.map(record => {
+    const item = classifySlackDigest_(record);
+    return item && record.pansori ? refinePansoriDigest_(item) : item;
+  }).filter(Boolean)
     .sort((a, b) => Number(b.ts) - Number(a.ts) || String(a.url).localeCompare(String(b.url)))
     .forEach(item => {
-      const key = JSON.stringify([item.pm, item.category, item.threadKey || item.url, item.kind,
+      const key = JSON.stringify([item.pm, item.category, item.pansori ? item.url + '|' + item.threadKey : item.threadKey || item.url, item.kind,
         item.task.replace('·스레드 문맥', ''), [...(item.projects || [])].sort(),
         [...new Set(slackDigestPlain_(item.text).match(/\d+\s*차\s*(?:납품|배치)/g) || [])]
           .map(value => value.replace(/\s+/g, '')).sort(),
@@ -194,6 +197,9 @@ function selectPersonalSlackItems_(pm, items, seen, day, slot) {
   const tomorrow = new Date(Date.parse(day + 'T00:00:00Z') + 86400000).toISOString().slice(0,10);
   return items.filter(item => {
     if (item.pm !== pm) return false;
+    // 발송 이력이 없어도 이미 지난 회의 초대는 새 업무로 재노출하지 않는다.
+    // 실제 업무 기한 경과나 날짜 불명확 항목은 이 조건으로 숨기지 않는다.
+    if (item.pansori && typeof pansoriPastMeetingNotice_ === 'function' && pansoriPastMeetingNotice_(item, day)) return false;
     if (!seen.includes(slackDigestFingerprint_(item))) return true;
     const due = slackDigestDueDay_(item);
     const actionable = !item.needsReview && !item.notice && !item.informational && item.kind !== '운영 기준';
@@ -221,14 +227,14 @@ function formatPersonalSlackDigest_(items, day, slot, attachedCount) {
     const key = actionable && due === day ? '오늘 기한' :
       actionable && due === tomorrow && slot === '17:00' ? '내일 기한' :
       item.previouslySent ? '오늘 요청 · 이전 회차에 안내됨' :
-      item.category === 'direct' ? '개인 · 새·변경' : 'BBPM · 새·변경';
+      item.category === 'direct' ? '개인 · 새·변경' : (item.groupLabel || 'BBPM') + ' · 새·변경';
     if (!groups.has(key)) groups.set(key, []);
     // 이전 회차에 이미 자세히 보낸 항목은 링크만 모아 한 줄로 접는다.
     if (item.previouslySent && key === '오늘 요청 · 이전 회차에 안내됨') {
       groups.get(key).push('<' + item.url + '|' + escapeSlack_(slackDigestDisplayKeywords_(item)) + '>');
       return;
     }
-    const scope = /^오늘|^내일/.test(key) ? '[' + (item.category === 'direct' ? '개인' : 'BBPM') + '] ' : '';
+    const scope = /^오늘|^내일/.test(key) ? '[' + (item.category === 'direct' ? '개인' : (item.groupLabel || 'BBPM')) + '] ' : '';
     const title = item.notice ? [item.task.replace('·스레드 문맥',''),item.summary]
       .filter(value => value && value !== '작업명 확인 필요').join(' · ') : slackDigestDisplayKeywords_(item);
     const posted = slackDigestPostedAt_(item.ts);
@@ -239,7 +245,7 @@ function formatPersonalSlackDigest_(items, day, slot, attachedCount) {
       (posted ? ' · 원문 ' + posted : '') + slackDigestDetailLine_(item));
   });
   // 이전 회차에 이미 보낸 오늘 요청은 제목으로만 구분한다(읽음·완료를 뜻하지 않음).
-  ['오늘 기한','내일 기한','개인 · 새·변경','BBPM · 새·변경','오늘 요청 · 이전 회차에 안내됨'].forEach(key => {
+  ['오늘 기한','내일 기한','개인 · 새·변경','BBPM · 새·변경','판소리 · 새·변경','오늘 요청 · 이전 회차에 안내됨'].forEach(key => {
     if (!groups.has(key)) return;
     const rows = groups.get(key);
     lines.push('*' + key + '*', ...(key === '오늘 요청 · 이전 회차에 안내됨' ? ['• ' + rows.join(' · ')] : rows));

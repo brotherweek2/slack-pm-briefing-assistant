@@ -6,9 +6,9 @@ const today = '2026-10-07';
 const sent = [];
 const logRows = [];
 const users = [
-  ['PM A', 'U0000000002', true],
-  ['PM B', 'U0000000004', true],
-  ['PM C', 'U0000000005', true],
+  ['PM A', 'U0000000003', true],
+  ['PM B', 'U0000000005', true],
+  ['PM C', 'U0000000006', true],
 ];
 const task = (pm, pair) => {
   const row = Array(18).fill('');
@@ -60,17 +60,17 @@ tasks.forEach(row => { row[13] = vm.runInContext('new Date("2026-10-07T02:00:00Z
 const send = (() => context.sendPmBriefings_(false));
 send();
 assert.equal(sent.length, 3);
-assert.equal(sent[0].id, 'U0000000002');
+assert.equal(sent[0].id, 'U0000000003');
 assert.match(sent[0].message, /\|언어쌍 종료 임박> 1건/);
 assert.match(sent[0].message, /#gid=123\|/);
 assert.doesNotMatch(sent[0].message, /#gid=456/);
 assert.doesNotMatch(sent[0].message, /de_DE-fr_FR|PM B/);
-assert.equal(sent[1].id, 'U0000000004');
+assert.equal(sent[1].id, 'U0000000005');
 assert.match(sent[1].message, /\|언어쌍 종료 임박> 1건/);
 assert.match(sent[1].message, /#gid=456\|/);
 assert.doesNotMatch(sent[1].message, /#gid=123/);
 assert.doesNotMatch(sent[1].message, /en_US-ja_JP|PM A/);
-assert.equal(sent[2].id, 'U0000000005');
+assert.equal(sent[2].id, 'U0000000006');
 assert.match(sent[2].message, /📌 \*오늘 확인할 업무\*\n• 확인할 특이사항 없음/);
 assert.doesNotMatch(sent[2].message, /담당자 이름을 찾지 못해|관리자에게 알렸어요/, 'recipient without a language-pair tab gets no false warning');
 assert.doesNotMatch(sent[2].message, /en_US-ja_JP|de_DE-fr_FR/);
@@ -78,14 +78,14 @@ assert.equal(logRows.length, 3);
 send();
 assert.equal(sent.length, 3, 'same-day rerun skips already sent recipients');
 const updatedTest = (() => context.sendPmBriefings_(true));
-vm.runInContext('findPilotRecipient_ = () => ({id: "U0000000002", enabled: true});', context);
+vm.runInContext('findPilotRecipient_ = () => ({id: "U0000000003", enabled: true});', context);
 assert.throws(() => updatedTest(), /본인만/, 'test cannot send to multiple enabled PMs');
 assert.equal(sent.length, 3);
 users[1][2] = false;
 users[2][2] = false;
 updatedTest();
 assert.equal(sent.length, 4, 'one test message can follow a normal send');
-assert.equal(sent[3].id, 'U0000000002');
+assert.equal(sent[3].id, 'U0000000003');
 assert.match(sent[3].message, /\|언어쌍 종료 임박> 1건/);
 assert.equal(logRows[3][1], 'manual-test-resend');
 updatedTest();
@@ -112,7 +112,7 @@ assert.match(sent[4].message, /\|언어쌍 종료 임박> 1건/);
 assert.match(sent[4].message, /BBPM\/개인 확인사항 1/);
 assert.equal(logRows[4][1], 'manual-test-slack-digest');
 assert.equal(digestMarked.length, 1, 'successful send marks displayed records');
-assert.equal(digestMarked[0].id, 'U0000000002');
+assert.equal(digestMarked[0].id, 'U0000000003');
 sendDigest();
 assert.equal(sent.length, 5, 'integrated test slot suppresses repeated clicks');
 assert.equal(digestMarked.length, 1);
@@ -203,13 +203,13 @@ context.PropertiesService={getScriptProperties:()=>({getProperty:key=>
   ['ENABLE_SELF_CALENDAR_PIPELINE','ENABLE_CALENDAR_BRIEFING'].includes(key)?'true':originalProps.getProperty(key)})};
 let ownEmail='own@example.test';
 context.Session={getEffectiveUser:()=>({getEmail:()=>ownEmail})};
-context.selfCalendarRegistry_=()=>[{pm:'PM A',email:'own@example.test',slackId:'U0000000002',sendEnabled:true},
- {pm:'PM B',email:'other@example.test',slackId:'U0000000004',sendEnabled:true}];
+context.selfCalendarRegistry_=()=>[{pm:'PM A',email:'own@example.test',slackId:'U0000000003',sendEnabled:true},
+ {pm:'PM B',email:'other@example.test',slackId:'U0000000005',sendEnabled:true}];
 context.buildLiveCalendarSection_=()=> '\nOWN CALENDAR';
 context.refreshBotTasks=()=>({pmNames:['PM A','PM B','PM C']});
 const flags=JSON.stringify(users),beforeSelf=sent.length,oldSlots=logRows.map(row=>row[1]);
 context.sendMyCurrentBriefingTest();
-assert.equal(sent.length,beforeSelf+1);assert.equal(sent.at(-1).id,'U0000000002');
+assert.equal(sent.length,beforeSelf+1);assert.equal(sent.at(-1).id,'U0000000003');
 assert.match(sent.at(-1).message,/OWN CALENDAR/);assert.doesNotMatch(sent.at(-1).message,/PM B|de_DE-fr_FR/);
 assert.equal(logRows.at(-1)[1],'manual-self-current-test-v2');assert.equal(JSON.stringify(users),flags);
 assert.deepEqual(logRows.slice(0,-1).map(row=>row[1]),oldSlots);
@@ -229,7 +229,7 @@ context.sendMyMorningBriefingTest();
 assert.equal(selfSnapshotAge,1440,'self test uses the latest snapshot of the day');
 assert.equal(digestMarked.length,markedBeforeSelf,'self test does not mark Slack items as seen');
 context.loadFreshBbpmSnapshot_=realFresh;
-assert.equal(sent.length,beforeMorning+1);assert.equal(sent.at(-1).id,'U0000000002');
+assert.equal(sent.length,beforeMorning+1);assert.equal(sent.at(-1).id,'U0000000003');
 assert.match(sent.at(-1).message,/오전 브리핑 드립니다!/);assert.doesNotMatch(sent.at(-1).message,/마무리 브리핑|PM B/);
 assert.equal(calendarSlot,'11:00','meeting section uses the morning slot');
 assert.equal(logRows.at(-1)[1],'manual-self-morning-test');assert.equal(JSON.stringify(users),flags);
@@ -271,8 +271,8 @@ console.log('Per-PM Slack routing checks passed');
     Utilities: {formatDate: () => '10:25'}});
   vm.runInContext(fs.readFileSync('src/central-bot/01_슬랙DM발송.js', 'utf8'), basisCtx);
   const line = basisCtx.formatBriefingBasis_(new Date(), '2026-10-30 10:20', '2026-10-30', true);
-  assert.equal(line, '\n\n_업무·회의 10:25 · Slack #pm_team_channel 10:20 기준_');
+  assert.equal(line, '\n\n_업무·회의 10:25 · Slack 10:20 기준_');
   basisCtx.BRIEFING = {timezone: 'Asia/Seoul', slackChannels: ['pm_team_channel', 'other_channel']};
-  assert.match(vm.runInContext("formatBriefingBasis_(new Date(), '2026-10-30 10:20', '2026-10-30', true)", basisCtx), /Slack #pm_team_channel #other_channel 10:20/);
+  assert.match(vm.runInContext("formatBriefingBasis_(new Date(), '2026-10-30 10:20', '2026-10-30', true)", basisCtx), /Slack 10:20/);
   console.log('Basis line names the Slack channels');
 }

@@ -31,6 +31,8 @@ const BOT_SETTINGS = Object.freeze({tab:'BOT_SETTINGS', headers:['setting', 'val
     ORIGINAL_TEST_MANAGEMENT_SPREADSHEET_ID:{note:'원본 테스트지 관리 시트 주소. 반영 후 시트에서 자동 삭제', secret:true},
     ENABLE_PERSONAL_LEAVE_SKIP:{note:'false면 연차인 PM에게도 정기 DM 보내기'},
     ENABLE_TASK_DONE:{note:'false면 DM 업무 줄의 ✅ 완료 버튼 끄기'},
+    ENABLE_WORKLOG_BRIEFING:{note:'true면 BOT_WORKLOG에서 켠 PM의 10:30·17:00 DM에 Work Log 업무일지 칸 표시'},
+    WORKLOG_SPREADSHEET_ID:{note:'Work Log 시트 주소 또는 ID(TASKS 탭을 읽기만 함)', pattern:/^(https:\/\/docs\.google\.com\/spreadsheets\/d\/[A-Za-z0-9_-]{20,}.*|[A-Za-z0-9_-]{20,}|삭제)$/},
   }});
 
 function botSettingsSheet_(props, create) {

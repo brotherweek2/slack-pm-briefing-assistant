@@ -88,25 +88,25 @@ assert.match(formatAll('PM A', [edited], '2026-10-07'), /• HT · en_US-id_ID �
 assert.doesNotMatch(formatAll('PM A', [own], '2026-10-07', {
   baseline: true, headsUpDelta: 0, reviewDelta: 0, hasThreeDays: false, stalled: 0,
 }), /전일 대비/);
-assert.equal(findRecipient([['PM A', 'U0000000002', true]]).id, 'U0000000002');
-assert.equal(findRecipient([['PM A', 'U0000000002', false]]).enabled, false);
+assert.equal(findRecipient([['PM A', 'U0000000003', true]]).id, 'U0000000003');
+assert.equal(findRecipient([['PM A', 'U0000000003', false]]).enabled, false);
 assert.throws(() => findRecipient([['PM A', 'U1', true], ['PM A', 'U2', true]]), /중복/);
 const sendPersonal = (() => context.sendPmBriefings_(false));
 assert.throws(() => sendPersonal(), /ENABLE_PM_SEND/, 'personal DM is disabled by default');
 const routes = vm.runInContext('buildPmSlackRoutes_', context);
-assert.equal(routes([['PM A', 'U0000000002', true], ['PM B', '', false]],
+assert.equal(routes([['PM A', 'U0000000003', true], ['PM B', '', false]],
   ['PM A', 'PM B']).length, 1, 'only opted-in PMs receive a route');
 // 명단 문제는 그 PM만 처리하고 회차 전체를 멈추지 않는다(10/26).
 const issues = [];
-assert.equal(routes([['PM A', 'U0000000002', true], ['PM B', 'U0000000002', true], ['PM C', 'U0000000003', true]], ['PM A', 'PM B', 'PM C'], issues).map(r => r.pm).join(), 'PM C', 'same Slack ID on two PMs → both skipped, others still sent');
+assert.equal(routes([['PM A', 'U0000000003', true], ['PM B', 'U0000000003', true], ['PM C', 'U0000000004', true]], ['PM A', 'PM B', 'PM C'], issues).map(r => r.pm).join(), 'PM C', 'same Slack ID on two PMs → both skipped, others still sent');
 assert.match(issues.join(' / '), /PM A: 같은 Slack ID.*PM B: 같은 Slack ID/);
 const nonLanguagePmIssues = [];
-const unknown = routes([['PM A', 'U0000000002', true]], ['PM B'], nonLanguagePmIssues);
+const unknown = routes([['PM A', 'U0000000003', true]], ['PM B'], nonLanguagePmIssues);
 assert.equal(unknown.length, 1);
 assert.equal(unknown[0].unknownOwner, undefined, 'no work tab is normal for other team members');
 assert.deepEqual(nonLanguagePmIssues, [], 'no false admin roster warning for a recipient without a work tab');
-assert.equal(routes([['PM A', '', true], ['PM B', 'U0000000003', true]], ['PM A', 'PM B']).map(r => r.pm).join(), 'PM B', 'invalid Slack ID → only that PM skipped');
-assert.equal(routes([['PM A', 'U0000000002', true], ['PM A', 'U0000000003', true]], ['PM A']).length, 0, 'duplicate name rows → skipped');
+assert.equal(routes([['PM A', '', true], ['PM B', 'U0000000004', true]], ['PM A', 'PM B']).map(r => r.pm).join(), 'PM B', 'invalid Slack ID → only that PM skipped');
+assert.equal(routes([['PM A', 'U0000000003', true], ['PM A', 'U0000000004', true]], ['PM A']).length, 0, 'duplicate name rows → skipped');
 const ownOnly = formatAll('PM A', [own, other], '2026-10-07', null, 'send');
 assert.doesNotMatch(ownOnly, /PM B|미리보기/);
 assert.match(ownOnly, /언어쌍 종료 임박 1건/);

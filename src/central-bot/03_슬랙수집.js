@@ -99,7 +99,11 @@ function readSlackMentionConfig_(props) {
   if (discovery && !/^[CG][A-Z0-9]{8,}$/.test(channel)) {
     throw new Error('SLACK_DISCOVERY_CHANNEL_ID에 BBPM 채널 ID를 설정하세요.');
   }
-  return { token, groupId, days, threads, discovery, channel };
+  const pansori = typeof readPansoriRoute_ === 'function' ? readPansoriRoute_(props) : null;
+  if (pansori) pansori.threads.forEach(thread => {
+    if (!threads.some(t => t.channel === thread.channel && t.ts === thread.ts)) threads.push(thread);
+  });
+  return { token, groupId, days, threads, discovery, channel, pansori };
 }
 
 function parseSlackMentionThreadUrl_(url) {
@@ -396,7 +400,7 @@ function slackMentionText_(text) {
     .split('\n').filter(line => !/^\s*(?:>|&gt;)/.test(line)).join('\n');
 }
 
-function classifySlackMentionMessages_(messages, recipients, members, groupId, oldest, newest, ownBotId) {
+function classifySlackMentionMessages_(messages, recipients, members, groupId, oldest, newest, ownBotId, pansoriRoute) {
   const byMessage = new Map();
   messages.forEach(message => {
     const ts = String(message.ts || '');
@@ -409,6 +413,10 @@ function classifySlackMentionMessages_(messages, recipients, members, groupId, o
   });
   const output = [];
   byMessage.forEach(message => {
+    if (pansoriRoute && message.sourceChannel === pansoriRoute.channel && pansoriRoute.threads.some(t => t.ts === message.sourceThreadTs)) {
+      output.push(...pansoriMentionRecords_(message, recipients, pansoriRoute));
+      return;
+    }
     const text = slackMentionText_(message.text);
     const users = new Set(Array.from(text.matchAll(/<@([UW][A-Z0-9]+)(?:\|[^>]+)?>/g), m => m[1]));
     const groups = new Set(Array.from(text.matchAll(/<!subteam\^([S][A-Z0-9]+)(?:\|[^>]+)?>/g), m => m[1]));
@@ -503,12 +511,13 @@ function writeBbpmSnapshot_(bot, props, scan, groupId) {
   const name = BBPM_SNAPSHOT.tabs[slot];
   const sheet = bot.getSheetByName(name) || bot.insertSheet(name);
   // 멘션이 없는 글은 분류 대상이 아니므로 저장하지 않는다.
-  const messages = scan.messages.filter(message => /<@|<!subteam/.test(String(message.text || '')) &&
+  const messages = scan.messages.filter(message => /<@|<!subteam|<!here>|<!channel>/.test(String(message.text || '')) &&
     Number(message.ts) >= scan.oldest && Number(message.ts) <= scan.newest).map(message => ({
     ts: message.ts, text: message.text, user: message.user, bot_id: message.bot_id, subtype: message.subtype,
     sourceChannel: message.sourceChannel, sourceHost: message.sourceHost,
     sourceThreadTs: message.sourceThreadTs, threadParentText: message.threadParentText }));
   const meta = { newest: scan.newest, oldest: scan.oldest, botId: scan.botId, groupId,
+    pansori: typeof readPansoriRoute_ === 'function' ? readPansoriRoute_(props) : null,
     members: scan.members, messageCount: scan.messageCount, savedAt: Date.now() };
   const rows = [meta].concat(messages).map(item => {
     const json = JSON.stringify(item);
@@ -555,6 +564,9 @@ function loadFreshBbpmSnapshot_(props, bot, now, maxAgeMinutes) {
   if (groupId && groupId !== meta.groupId) {
     throw fail('CONFIG_CHANGED', 'Slack PM 그룹 설정이 변경됐습니다. 다시 수집하세요.');
   }
+  if (JSON.stringify(meta.pansori || null) !== JSON.stringify(typeof readPansoriRoute_ === 'function' ? readPansoriRoute_(props) : null)) {
+    throw fail('CONFIG_CHANGED', '판소리 수신 설정이 바뀌었습니다. 다시 수집하세요.');
+  }
   if (age > maxAge * 60) {
     throw fail('STALE', '최근 ' + maxAge + '분 안에 완료된 Slack 수집 결과가 없습니다.');
   }
@@ -564,5 +576,5 @@ function loadFreshBbpmSnapshot_(props, bot, now, maxAgeMinutes) {
 function classifySlackSnapshot_(snapshot, recipients) {
   const meta = snapshot.meta;
   return classifySlackMentionMessages_(snapshot.messages, recipients, new Set(meta.members),
-    meta.groupId, meta.oldest, meta.newest, meta.botId);
+    meta.groupId, meta.oldest, meta.newest, meta.botId, meta.pansori);
 }

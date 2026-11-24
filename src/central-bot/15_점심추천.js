@@ -14,7 +14,10 @@
  * - readLunchRestaurantCatalog_(bot): BOT_RESTAURANTS 탭을 읽고, 없으면 기본 목록을 쓴다
  * - lunchRecommendationStateKey_(route,kind): PM별 점심 추천 이력의 속성 이름(해시)
  * - readLunchRecommendationState_(props,key): 점심 추천 이력(최근 식당·오늘 선택)을 읽는다
- * - pickLunchRecommendation_(props,route,day,slot,catalog,kind): 오늘 PM에게 줄 식당·간단식을 고른다(날짜·사람 해시, 최근 7회 제외)
+ * - lunchCuisineGroup_(item): 음식 종류를 넓은 묶음(한식·양식·분식·면·일식·중식·아시아)으로 바꾼다
+ * - lunchPastHistoryIds_(state,day): 오늘 것을 뺀 어제까지의 추천 ID
+ * - lunchFreshCandidates_(active,pastIds,catalog): 최근 7곳·직전 음식 묶음을 빼고 후보를 남긴다(없으면 조건을 푼다)
+ * - pickLunchRecommendation_(props,route,day,slot,catalog,kind): 오늘 PM에게 줄 식당·간단식을 고른다(날짜·사람 해시, 반복 줄이기)
  * - formatLunchRecommendation_(selection): 점심 추천 DM 문안
  * - markLunchRecommendationSent_(props,route,selection): 발송 성공 뒤 점심 추천 이력을 저장한다
  */
@@ -125,6 +128,37 @@ function readLunchRecommendationState_(props,key) {
   return state;
 }
 
+// 음식 종류를 넓게 묶는다. 한식·국밥·한식뷔페처럼 이름은 달라도 같은 느낌인 것을 한 묶음으로 본다.
+// 목록에 없는 종류(카페·편의점·새로 추가한 종류)는 그 이름 자체가 묶음이다.
+const LUNCH_CUISINE_GROUPS = Object.freeze({'한식':'한식','한식뷔페':'한식','국밥':'한식','전골':'한식','솥밥':'한식',
+  '샐러드':'양식','브런치':'양식','샌드위치':'양식','버거':'양식','치킨·버거':'양식',
+  '분식':'분식·면','국수':'분식·면','일식':'일식','샤브샤브':'일식','중식':'중식',
+  '동남아식':'아시아','베트남식':'아시아','카레':'아시아'});
+
+function lunchCuisineGroup_(item) {
+  return LUNCH_CUISINE_GROUPS[item.cuisine] || item.cuisine || item.category;
+}
+
+// 오늘 이미 저장된 추천은 빼고 '어제까지'의 추천 ID만 돌려준다(최근 것이 뒤). 같은 날 여러 묶음이 같은 결과를 보게 한다.
+function lunchPastHistoryIds_(state,day) {
+  const ids = state.history.map(item => item.id);
+  return state.last && state.last.day === day ? ids.slice(0,-1) : ids;
+}
+
+// 반복을 줄이는 순서: ① 최근 7곳·직전 음식 묶음 제외 → ② 최근 7곳만 제외 → ③ 전체. 후보가 없으면 조건을 하나씩 푼다.
+// (최근 3번의 음식 종류까지 빼면 한식 식당이 너무 드물게 나와서 직전 묶음만 본다.)
+function lunchFreshCandidates_(active,pastIds,catalog) {
+  const byId = new Map(catalog.map(item => [item.id,item]));
+  const recentIds = new Set(pastIds.slice(-BOT_RESTAURANTS.recent));
+  const last = byId.get(pastIds[pastIds.length-1]);
+  const lastGroup = last ? lunchCuisineGroup_(last) : null;
+  const tiers = [
+    item => !recentIds.has(item.id) && lunchCuisineGroup_(item) !== lastGroup,
+    item => !recentIds.has(item.id)];
+  for (const keep of tiers) { const found = active.filter(keep); if (found.length) return found; }
+  return active;
+}
+
 function pickLunchRecommendation_(props,route,day,slot,catalog,kind) {
   if (props.getProperty('ENABLE_LUNCH_RECOMMENDATION') === 'false' || slot !== '11:00') return null;
   if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) throw new Error('점심 추천 날짜 형식 오류');
@@ -142,9 +176,7 @@ function pickLunchRecommendation_(props,route,day,slot,catalog,kind) {
       {...restaurant,menu:state.last.menu,day,kind} : null;
     return kind === 'meal' ? selected ? {...selected,light} : light ? {light,day,kind} : null : selected;
   }
-  const recent = new Set(state.history.slice(-BOT_RESTAURANTS.recent).map(item => item.id));
-  let candidates = active.filter(item => !recent.has(item.id));
-  if (!candidates.length) candidates = active;
+  const candidates = lunchFreshCandidates_(active,lunchPastHistoryIds_(state,day),catalog);
   // 식당부터 균등 선택: 메뉴가3개인 곳이1개인 곳보다 더 자주 뽑히지 않도록 한다.
   const bytes = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256,JSON.stringify(['lunch',route.id,day,kind]));
   const seed = Array.from(bytes).slice(0,4).reduce((v,b) => v*256+(b+256)%256,0);
@@ -156,9 +188,14 @@ function pickLunchRecommendation_(props,route,day,slot,catalog,kind) {
 function formatLunchRecommendation_(selection) {
   if (!selection) return '';
   const lines = [];
-  // 식당 이름을 먼저 굵게 두어 훑어볼 때 바로 보이게 한다.
-  if (selection.id) lines.push('• *' + escapeSlack_(selection.name) + '* — ' + escapeSlack_(selection.recommendation));
-  if (selection.light) lines.push('• 가볍게 · *' + escapeSlack_(selection.light.name) + '* — ' + escapeSlack_(selection.light.recommendation));
+  // 11/24 피드백 반영: 문장 대신 "식당 — 추천 메뉴: A, B"로 짧게. 오늘 고른 메뉴를 앞에 두고 최대 2개.
+  // 메뉴가 없으면 예전 추천 문장을 쓴다.
+  const menuText = item => {
+    const menus = [item.menu].concat(item.menus || []).filter((menu,i,all) => menu && all.indexOf(menu) === i).slice(0,2);
+    return menus.length ? '추천 메뉴: ' + menus.map(escapeSlack_).join(', ') : escapeSlack_(item.recommendation);
+  };
+  if (selection.id) lines.push('• *' + escapeSlack_(selection.name) + '* — ' + menuText(selection));
+  if (selection.light) lines.push('• 가볍게 · *' + escapeSlack_(selection.light.name) + '* — ' + menuText(selection.light));
   return lines.length ? '\n\n🍚 *점심 추천*\n' + lines.join('\n') : '';
 }
 

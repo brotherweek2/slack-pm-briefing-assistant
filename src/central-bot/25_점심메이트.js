@@ -7,10 +7,11 @@
  *
  * 내부 함수 (직접 실행하지 않음)
  * - lunchMateOn_(props, slackId): 이 PM이 점심 메이트를 켰는지
- * - lunchMateParticipants_(props, userRows): 발송 TRUE이면서 버튼으로 켠 PM(오늘 연차인 PM 제외)
+ * - lunchMateParticipants_(props, userRows): 발송 TRUE이면서 버튼으로 켠 PM(오늘 연차·캘린더 미연결 PM 제외)
+ * - lunchMateReceivers_(props, people): 실제 DM 수신자(캘린더 연결 완료)만 남긴다. 퇴사로 calendar_connect를 뺀 사람 제외
  * - lunchMateTodayParticipants_(props, userRows, day, readOnly): 정기 발송은 첫 묶음 명단을 그날 고정, 시험·미리보기는 그 명단을 읽기만
  * - lunchMateHash_(text): 날짜·ID로 섞기용 숫자를 만든다
- * - lunchMatePlan_(participants, catalog, day): 참여자 Slack ID → 오늘의 메이트 식당
+ * - lunchMatePlan_(participants, catalog, day, props): 참여자 Slack ID → 오늘의 메이트 식당(참여자 최근 7곳·직전 음식 묶음 먼저 제외)
  * - applyLunchMate_(selection, plan, route, day): 켠 사람의 식사 추천을 메이트 식당으로 바꾼다(가볍게 추천은 그대로)
  * - formatLunchMateLine_(route, plan, participants): "🤝 오늘 ○○ 메이트: 이름 님" 한 줄
  * - lunchMateButtonBlock_(on): DM에 붙일 켜기/끄기 버튼 블록
@@ -31,7 +32,21 @@ function lunchMateParticipants_(props, userRows) {
     .filter(person => person.pm && lunchMateOn_(props, person.id))
     .sort((a, b) => a.id.localeCompare(b.id));
   const away = briefingLeaveRoutes_(people, props, new Date()).map(item => item.route.id);
-  return people.filter(person => !away.includes(person.id));
+  return lunchMateReceivers_(props, people.filter(person => !away.includes(person.id)));
+}
+
+// 실제로 DM을 받는 사람만 메이트로 보인다. 정기 발송은 send_enabled와 캘린더 연결(calendar_connect 체크 + 연결 완료)을
+// 모두 본다(19번 selfCalendarFilterRoutes_와 같은 기준). 퇴사·중지로 calendar_connect를 뺀 사람이 남의 DM에 이름으로 나오지 않게 한다.
+// 연결 상태를 못 읽으면 잘못된 이름을 보이지 않도록 오늘은 메이트를 비운다.
+function lunchMateReceivers_(props, people) {
+  if (!people.length || props.getProperty('ENABLE_SELF_CALENDAR_PIPELINE') !== 'true') return people;
+  try {
+    const ok = new Set(selfCalendarFilterRoutes_(people, props).map(person => person.id));
+    return people.filter(person => ok.has(person.id));
+  } catch (error) {
+    console.log('점심 메이트 수신자 확인 실패 | 오늘은 메이트 없이 점심 추천만 | ' + error.message);
+    return [];
+  }
 }
 
 // 정기 발송은 4명씩 나눠 보내므로, 첫 묶음의 참여자 명단을 그날 고정해 모든 묶음이 같은 메이트를 본다.
@@ -55,15 +70,31 @@ function lunchMateHash_(text) {
   return Array.from(bytes).slice(0, 4).reduce((value, b) => value * 256 + (b + 256) % 256, 0);
 }
 
-function lunchMatePlan_(participants, catalog, day) {
+// props를 주면 참여자들의 어제까지 점심 이력을 보고, 누군가 최근 7번 안에 받은 식당과 직전 음식 묶음을 먼저 뺀다.
+// 오늘 저장된 추천은 보지 않으므로 같은 날 여러 묶음에서 다시 계산해도 같은 식당이 나온다.
+function lunchMatePlan_(participants, catalog, day, props) {
   const plan = new Map();
   const active = catalog.filter(item => item.enabled && item.category === '식당' &&
     ['confirmed','approximate'].includes(item.status) && item.menus.length && item.checkedAt <= day &&
     !BRIEFING_LUNCH_REMOVED_NAMES.includes(item.name));
   if (!active.length || !participants.length) return plan;
   const count = Math.max(1, Math.min(active.length, Math.ceil(participants.length / LUNCH_MATE.groupSize)));
-  const places = active.map(item => ({item, h:lunchMateHash_('mate|' + day + '|' + item.id)}))
-    .sort((a, b) => a.h - b.h).slice(0, count).map(x => x.item);
+  const recentIds = new Set(), lastGroups = new Set();
+  if (props) {
+    const byId = new Map(catalog.map(item => [item.id, item]));
+    participants.forEach(person => {
+      try {
+        const past = lunchPastHistoryIds_(readLunchRecommendationState_(props, lunchRecommendationStateKey_(person, 'meal')), day);
+        past.slice(-BOT_RESTAURANTS.recent).forEach(id => recentIds.add(id));
+        const last = byId.get(past[past.length - 1]);
+        if (last) lastGroups.add(lunchCuisineGroup_(last));
+      } catch (error) { console.log('점심 메이트 이력 확인 생략 | 한 명'); }
+    });
+  }
+  const ranked = active.map(item => ({item, h:lunchMateHash_('mate|' + day + '|' + item.id)})).sort((a, b) => a.h - b.h).map(x => x.item);
+  const tiers = [item => !recentIds.has(item.id) && (!lastGroups.size || !lastGroups.has(lunchCuisineGroup_(item))), item => !recentIds.has(item.id), () => true];
+  const places = [];
+  tiers.forEach(keep => ranked.forEach(item => { if (places.length < count && keep(item) && !places.includes(item)) places.push(item); }));
   participants.map(person => ({person, h:lunchMateHash_('mate|' + day + '|' + person.id)}))
     .sort((a, b) => a.h - b.h).forEach(({person}, index) => plan.set(person.id, places[index % count]));
   return plan;

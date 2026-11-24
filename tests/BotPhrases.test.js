@@ -17,13 +17,13 @@ for(const slot of ['11:00','17:00']){
 }
 const values=new Map();let writes=0;
 const props={getProperty:key=>values.get(key)||null,setProperty:(key,value)=>{writes++;values.set(key,value);}};
-const route={pm:'PM A',id:'U0000000002'};
+const route={pm:'PM A',id:'U0000000003'};
 const first=ctx.pickBriefingPhrase_(props,route,'2026-10-19','11:00',catalog);
 assert.equal(writes,0,'selection and preview never consume the phrase');
 assert.equal(first.id,ctx.pickBriefingPhrase_(props,route,'2026-10-19','11:00',catalog).id);
 assert.match(ctx.formatBriefingPhrase_(first),/^\n\n✨ \*오늘의 한마디\*\n> /);
-const evening=ctx.pickBriefingPhrase_(props,route,'2026-10-19','17:00',catalog);
-assert.match(evening.id,/^PM-/);assert.match(ctx.formatBriefingPhrase_(evening),/^\n\n✨ \*오늘의 한마디\*\n> /);
+// 11/24: 한마디는 하루 한 번, 아침(10:30)에만. 17:00에는 고르지 않는다.
+assert.equal(ctx.pickBriefingPhrase_(props,route,'2026-10-19','17:00',catalog),null,'no phrase in the 17:00 DM');
 ctx.markBriefingPhraseSent_(props,route,first);assert.equal(writes,1);
 ctx.markBriefingPhraseSent_(props,route,first);assert.equal(writes,1,'same-day repeated success does not duplicate history');
 const edited=catalog.map(item=>item.id===first.id?{...item,text:'edited sample'}:item);
@@ -38,9 +38,23 @@ const familyHistory=[];
 for(let day=0;day<100;day++){
   const date=new Date(Date.UTC(2026,9,20)+day*86400000).toISOString().slice(0,10);
   const picked=ctx.pickBriefingPhrase_(props,route,date,'11:00',catalog);
-  assert.ok(!familyHistory.slice(-20).includes(picked.family),'recent core sentences do not repeat with a different ending');
+  // 말투 연속을 막으려고 최근 제외 범위를 20→10→5로 좁힐 수 있다. 최근 5개 안에서는 절대 반복하지 않는다.
+  assert.ok(!familyHistory.slice(-5).includes(picked.family),'recent core sentences do not repeat with a different ending');
   familyHistory.push(picked.family);ctx.markBriefingPhraseSent_(props,route,picked);
 }
+assert.ok(familyHistory.filter((family,i)=>familyHistory.slice(Math.max(0,i-20),i).includes(family)).length<familyHistory.length/4,
+  'most picks still avoid the last 20 sentences');
+// 아침 한마디는 어제와 같은 말투가 이어지지 않는다(11/24 반복 줄이기). 17:00은 null.
+{const themeRoute={pm:'PM T',id:'U0000000005'};let lastTheme=null;
+for(let day=0;day<120;day++){
+  const date=new Date(Date.UTC(2026,10,2)+day*86400000).toISOString().slice(0,10);
+  for(const slot of ['11:00','17:00']){
+    const picked=ctx.pickBriefingPhrase_(props,themeRoute,date,slot,catalog);
+    if(slot==='17:00'){assert.equal(picked,null);continue;}
+    assert.notEqual(picked.theme,lastTheme,'morning phrase never repeats yesterday\'s tone');
+    lastTheme=picked.theme;ctx.markBriefingPhraseSent_(props,themeRoute,picked);
+  }
+}}
 const state=JSON.parse(values.get(ctx.briefingPhraseStateKey_(route,'11:00')));
 assert.equal(state.history.length,60);
 assert.ok(JSON.stringify(state).length<8000,'each Script Property remains below size limit');
@@ -50,7 +64,7 @@ assert.ok(diversity.size>20,'choices are recipient-specific, not one shared dail
 assert.throws(()=>ctx.validateBriefingPhraseRows_([rows[0],rows[0]]),/중복/);
 assert.throws(()=>ctx.validateBriefingPhraseRows_([[...rows[0].slice(0,4),'line\nbreak',true]]),/형식/);
 assert.throws(()=>ctx.validateBriefingPhraseRows_([[...rows[0].slice(0,5),'TRUE']]),/형식/);
-assert.throws(()=>ctx.validateBriefingPhraseRows_([[...rows[0].slice(0,4),'<@U0000000002>',true]]),/형식/);
+assert.throws(()=>ctx.validateBriefingPhraseRows_([[...rows[0].slice(0,4),'<@U0000000003>',true]]),/형식/);
 ctx.assertBotHeaders_=()=>{};ctx.readBotRows_=()=>rows;
 assert.equal(ctx.readBriefingPhraseCatalog_({getSheetByName:()=>null}).length,80,'safe built-in bank before optional setup');
 assert.equal(ctx.readBriefingPhraseCatalog_({getSheetByName:()=>({getLastRow:()=>1001})}).length,80);
