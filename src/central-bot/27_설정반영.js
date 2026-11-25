@@ -44,7 +44,8 @@ const BOT_SETTINGS = Object.freeze({tab:'BOT_SETTINGS', headers:['setting', 'val
 // BOT_USERS 행(이름·Slack ID·send_enabled·이메일·calendar_connect). 판소리 수신자 이름 변환에 쓴다.
 function botUserRowsForSettings_(props) {
   const bot = SpreadsheetApp.openById(requiredProperty_(props, 'BOT_SPREADSHEET_ID'));
-  return readBotRows_(requireBotSheet_(bot, BOT_WORKBOOK.usersTab, BOT_WORKBOOK.userHeaders), BOT_WORKBOOK.userHeaders.length);
+  // E열(calendar_connect)까지 읽는다. 머리글 검사 목록은 앞 3열뿐이라 그 길이로 읽으면 캘린더 연결이 늘 비어 보였다(11/25).
+  return readBotRows_(requireBotSheet_(bot, BOT_WORKBOOK.usersTab, BOT_WORKBOOK.userHeaders), 5);
 }
 
 function botSettingsSheet_(props, create) {
