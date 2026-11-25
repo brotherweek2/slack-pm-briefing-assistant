@@ -22,7 +22,7 @@
  * - refinePansoriDigest_(item): 업무 유형·번호 목록·회신 요청 표현을 판별한다.
  * - slackDigestPlainSafe_(text): 분류 전에 Slack 서식을 걷어낸다.
  * - pansoriOwnLines_(section, id): 본인 담당 줄·상위 제목·하위 설명과 기한을 보존한다.
- * - pansoriChecklist_(text): 번호 목록을 최대 5개 발췌한다. 완료 체크 상태는 아니다.
+ * - pansoriChecklist_(text, id): 번호 목록을 최대 5개 발췌한다. 본인 담당 항목은 "(내 담당)", 다른 담당자 멘션은 뺀다.
  * - pansoriMeetingPrepLine_(props, route, items, day, slot): 오전 회의 준비 안내. 회의록과 회의의 정확한 날짜 대응은 추가 점검 대상.
  * - pansoriPastMeetingNotice_(item, day): 명확히 지난 회의 초대를 DM 선택에서만 제외한다.
  */
@@ -30,7 +30,7 @@ const PANSORI_CATEGORIES = Object.freeze([
   {name:'회의·안건·회의록', keywords:/회의(?!실)|스크럼|위클리|인수인계|온보딩|안건/},
   {name:'모집·스크리닝·참여자 안내', keywords:/모집|스크리닝|리크루팅|참여자 안내|헤즈업/},
   {name:'가이드·계약 문서 검토', keywords:/가이드|계약|\bSA\b|\bSOW\b|\bICF\b|\bNDA\b/i},
-  {name:'녹음 준비·환경 테스트·운영 시트', keywords:/녹음|소음|타임테이블|운영 시트|Apple TV|아이폰/i},
+  {name:'녹음 준비·환경 테스트·운영 시트', keywords:/녹음|소음|음원|타임테이블|운영 시트|Apple TV|아이폰/i},
   {name:'데이터 검수·납품·정산', keywords:/검수|납품|정산|\bBMS\b|\bWSP\b/i},
 ]);
 
@@ -207,7 +207,7 @@ function refinePansoriDigest_(item) {
   item.needsReview = uncertain || !matches.length;
   if (item.pansoriAmbiguous) { item.deadline = ''; item.summary = '담당 업무·기한 원문 확인'; }
   // ⑤ "1) … 2) …" 할 일 목록은 항목별로 나눠 DM에 한 줄씩 보인다(최대 5개).
-  item.pansoriChecklist = pansoriChecklist_(text);
+  item.pansoriChecklist = pansoriChecklist_(text, item.recipientId);
   // 회신을 요청하는 표현만 찾는다. 실제 회신·완료 여부는 알 수 없다.
   item.awaitingReply = item.category === 'direct' &&
     /부탁|전달\s*(?:주|해\s*주)|확인\s*(?:주|해\s*주)|회신|답변|가능하실|괜찮으실|어떠실|선호/.test(slackDigestPlainSafe_(text));
@@ -228,8 +228,12 @@ function pansoriOwnLines_(section, id) {
   const mine = new RegExp('<@' + id + '(?:\\|[^>]+)?>');
   const indent = line => line.match(/^\s*/)[0].replace(/\t/g, '    ').length;
   const picked = new Set(), ownLines = [];
+  // 인사·호칭 줄("@A, @B 님,", "@A @B 님, 명일 일정입니다")은 담당 배정이 아니므로 판단에서 뺀다(11/25).
+  // 요청 표현(부탁·해 주시면 등)이 있으면 함께 맡긴 일로 보고 그대로 판단한다.
+  const address = line => /^\s*(?:<@[UW][A-Z0-9]+(?:\|[^>]+)?>[\s,·]*)+님/.test(line) &&
+    !/부탁|해\s*주|주시면|주세요|바랍니다|요청/.test(line.replace(/<@[^>]+>/g, ''));
   lines.forEach((line, i) => {
-    if (!mine.test(line)) return;
+    if (!mine.test(line) || address(line)) return;
     const others = Array.from(line.matchAll(/<@([UW][A-Z0-9]+)(?:\|[^>]+)?>/g), m => m[1]).filter(other => other !== id);
     if (others.length) { ownLines.push(null); return; }
     picked.add(i); ownLines.push(i);
@@ -251,7 +255,8 @@ function pansoriOwnLines_(section, id) {
   if (!ownLines.length || ownLines.includes(null)) return null;
   const titleAt = lines.findIndex(line => line.trim());
   if (titleAt >= 0 && /^\*?\[[^\]]+\]\*?$/.test(lines[titleAt].trim())) picked.add(titleAt);
-  const clean = line => slackDigestPlainSafe_(line.replace(/<@[UW][A-Z0-9]+(?:\|[^>]+)?>/g, ''))
+  // 멘션은 뒤따르는 "님"까지 지운다("- @PM A 님" → "-"가 남았다가 아래에서 정리됨).
+  const clean = line => slackDigestPlainSafe_(line.replace(/<@[UW][A-Z0-9]+(?:\|[^>]+)?>\s*님?/g, ''))
     .replace(/[*_~`]/g, '').replace(/^[\s•◦▪︎\-·]+/, '').replace(/[\s\-–—:]+$/, '').replace(/\s+/g, ' ').trim();
   const order = [...picked].sort((a, b) => a - b);
   // 멘션 뒤 "님, …"으로 시작하는 인사 줄은 원문에는 남기고 요약에서는 뺀다. 요약은 원문 줄 순서를 따른다.
@@ -262,10 +267,14 @@ function pansoriOwnLines_(section, id) {
 }
 
 // ⑤ "1) 영상 음원 재생 목록 생성" 같은 번호 목록을 뽑는다. 2개 이상일 때만 목록으로 본다.
-function pansoriChecklist_(text) {
+function pansoriChecklist_(text, id) {
   const items = [];
   String(text || '').split('\n').forEach(line => {
-    const m = slackDigestPlainSafe_(line).replace(/[*_~`]/g, '').match(/^[\s•◦▪︎\-]*(\d{1,2})[).]\s*(.{2,60}?)\s*$/);
+    // 항목 끝의 담당자 멘션: 본인이면 "(내 담당)", 다른 사람이면 뺀다("- 님"만 남던 문제, 11/25).
+    const raw = line.replace(/<@([UW][A-Z0-9]+)(?:\|[^>]+)?>\s*님?/g, (_m, who) => who === id ? '\u0001' : '\u0002');
+    const plain = slackDigestPlainSafe_(raw).replace(/[*_~`]/g, '')
+      .replace(/[\s\-–—:]*\u0001/g, ' (내 담당)').replace(/[\s\-–—:]*\u0002/g, '');
+    const m = plain.match(/^[\s•◦▪︎\-]*(\d{1,2})[).]\s*(.{2,60}?)\s*$/);
     if (m && items.length < 5 && !items.some(item => item.n === m[1])) items.push({n:m[1], text:m[2].trim()});
   });
   return items.length >= 2 ? items.map(item => item.n + ') ' + item.text) : [];

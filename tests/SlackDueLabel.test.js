@@ -30,7 +30,7 @@ const merged = ctx.attachSlackToWorkLines_(work, [abuse, other], '2026-10-22');
 assert.equal(merged.attached, 1);
 assert.equal(JSON.stringify(merged.rest.map(i => i.url)), '["https://example.slack.com/file"]');
 const lines = merged.text.split('\n');
-assert.match(lines[4], /^   ↳ 관련 Slack \[개인\] <https:\/\/example\.slack\.com\/abuse\|원문 10\/22> · 기한 10\/22\(목\) · 작성자A "이번 주 어뷰저 리스트 작성 부탁드립니다 — 대상…"$/);
+assert.match(lines[4], /^   ↳ 관련 Slack \[개인\] <https:\/\/example\.slack\.com\/abuse\|원문 10\/22> · 기한 10\/22\(목\) · 작성자A 님 "이번 주 어뷰저 리스트 작성 부탁드립니다 — 대상…"$/);
 assert.equal(lines[5], '• 언어쌍 종료 임박 2건', 'attached under the matching work line only');
 const rest = ctx.formatPersonalSlackDigest_(merged.rest, '2026-10-22', '11:00', merged.attached);
 assert.match(rest, /\n   ↳ "파일 변환 요청드립니다"/, 'snippet shown even without author name');
@@ -70,9 +70,9 @@ console.log('Snippet cut checks passed');
 {
   const line = extra => ctx.slackDigestDetailLine_(Object.assign({authorName: '작성자A/TEAM/user.a'}, extra));
   assert.equal(line({text: '<@U00000001> <@U00000002> 님,\n캘린더 및 해당 스레드 확인하시어 참석 부탁드립니다'}),
-    '\n   ↳ 작성자A · "캘린더 및 해당 스레드 확인하시어 참석 부탁드립니다"');
-  assert.equal(line({text: '<@U00000001>\n안녕하세요.\n[리소스 관리 체계 고도화 관련 안내]\n본문'}), '\n   ↳ 작성자A · [리소스 관리 체계 고도화 관련 안내]');
-  assert.equal(line({text: '<@U00000001> ...', threadParentText: '[납품 대상 파일 검수 일정] 안내'}), '\n   ↳ 작성자A · [납품 대상 파일 검수 일정]');
-  assert.equal(line({text: '<@U00000001> <@U00000002>, 님,'}), '\n   ↳ 작성자A', 'no "…" or ", , 님," fragments');
+    '\n   ↳ 작성자A 님 · "캘린더 및 해당 스레드 확인하시어 참석 부탁드립니다"');
+  assert.equal(line({text: '<@U00000001>\n안녕하세요.\n[리소스 관리 체계 고도화 관련 안내]\n본문'}), '\n   ↳ 작성자A 님 · [리소스 관리 체계 고도화 관련 안내]');
+  assert.equal(line({text: '<@U00000001> ...', threadParentText: '[납품 대상 파일 검수 일정] 안내'}), '\n   ↳ 작성자A 님 · [납품 대상 파일 검수 일정]');
+  assert.equal(line({text: '<@U00000001> <@U00000002>, 님,'}), '\n   ↳ 작성자A 님', 'no "…" or ", , 님," fragments');
   console.log('Snippet quality checks passed');
 }

@@ -237,6 +237,8 @@ function formatPersonalSlackDigest_(items, day, slot, attachedCount) {
       actionable && due === tomorrow && slot === '17:00' ? '내일 기한' :
       item.pansori && item.awaitingReply ? (item.previouslySent ? '판소리 · 회신 요청(이전 안내)' : '판소리 · 회신 요청') :
       item.previouslySent ? '오늘 요청 · 이전 회차에 안내됨' :
+      // 판소리는 "개인"과 섞지 않고 나에게 온 요청 / 공통 안내로 나눈다(11/25).
+      item.pansori ? (item.category === 'direct' ? '판소리 · 나에게 온 요청' : '판소리 · 공통 안내') :
       item.category === 'direct' ? '개인 · 새·변경' : (item.groupLabel || 'BBPM') + ' · 새·변경';
     if (!groups.has(key)) groups.set(key, []);
     // 이전 회차에 이미 자세히 보낸 항목은 링크만 모아 한 줄로 접는다.
@@ -257,7 +259,7 @@ function formatPersonalSlackDigest_(items, day, slot, attachedCount) {
   });
   // 이전 회차에 이미 보낸 오늘 요청은 제목으로만 구분한다(읽음·완료를 뜻하지 않음).
   const folded = ['오늘 요청 · 이전 회차에 안내됨', '판소리 · 회신 요청(이전 안내)'];
-  ['오늘 기한','내일 기한','개인 · 새·변경','BBPM · 새·변경','판소리 · 새·변경','판소리 · 회신 요청',
+  ['오늘 기한','내일 기한','개인 · 새·변경','BBPM · 새·변경','판소리 · 나에게 온 요청','판소리 · 새·변경','판소리 · 공통 안내','판소리 · 회신 요청',
     '판소리 · 회신 요청(이전 안내)','오늘 요청 · 이전 회차에 안내됨'].forEach(key => {
     if (!groups.has(key)) return;
     const rows = groups.get(key);
@@ -279,19 +281,26 @@ function slackDigestDueLabel_(due, raw) {
 // 누르기 전에 무슨 일인지 알 수 있게 작성자와 원문 첫 구절을 하위 줄로 붙인다. 둘 다 없으면 빈 문자열.
 function slackDigestDetailLine_(item) {
   const parts = [];
-  if (item.authorName) parts.push(escapeSlack_(slackAuthorShortName_(item.authorName)));
+  if (item.authorName) parts.push(escapeSlack_(slackAuthorLabel_(item.authorName)));
   const snippet = slackDigestSnippet_(item);
   if (snippet) parts.push(slackDigestSnippetText_(snippet));
   // 판소리: 여러 명 배정 글에서 뽑은 내 담당 줄, "1) 2)" 할 일 목록(33번).
   const extra = [];
   if (item.pansoriMine) extra.push('\n   ↳ 내 담당: ' + escapeSlack_(item.pansoriMine));
-  (item.pansoriChecklist || []).forEach(task => extra.push('\n      ☐ ' + escapeSlack_(task)));
+  // 번호 목록은 체크 기능이 없으므로 체크 상자 없이 들여쓴다(11/25).
+  (item.pansoriChecklist || []).forEach(task => extra.push('\n      ' + escapeSlack_(task)));
   return (parts.length ? '\n   ↳ ' + parts.join(' · ') : '') + extra.join('');
 }
 
 // 회사 표시 이름이 '이름/팀/아이디' 형식이라 앞의 이름만 쓴다.
 function slackAuthorShortName_(name) {
   return String(name || '').split('/')[0].trim();
+}
+
+// DM에 보이는 작성자: 이름만 덩그러니 두지 않고 "○○ 님"으로 쓴다(11/25 피드백).
+function slackAuthorLabel_(name) {
+  const short = slackAuthorShortName_(name);
+  return short ? short + ' 님' : '';
 }
 
 // [제목]은 그대로, 본문 구절은 따옴표로 감싼다.
@@ -345,7 +354,7 @@ function attachSlackToWorkLines_(workText, items, day) {
     const deadline = slackDigestDeadlineText_(item, due);
     const posted = slackDigestPostedAt_(item.ts);
     const scope = item.category === 'direct' ? '개인' : 'BBPM';
-    const detail = [item.authorName ? escapeSlack_(slackAuthorShortName_(item.authorName)) : '',
+    const detail = [item.authorName ? escapeSlack_(slackAuthorLabel_(item.authorName)) : '',
       slackDigestSnippet_(item) ? slackDigestSnippetText_(slackDigestSnippet_(item)) : ''].filter(Boolean).join(' ');
     let end = at + 1;
     while (end < lines.length && /^ {2,}↳/.test(lines[end])) end++;

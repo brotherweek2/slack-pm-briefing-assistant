@@ -50,7 +50,11 @@ console.log('Past meeting excluded before unseen selection; real work, future/re
   assert.ok(own && /10시 독도/.test(own.summary) && /\[오전\]/.test(own.summary), 'own slot line with its heading');
   assert.ok(!/우유니|2시 독도/.test(own.text), 'other people lines are dropped');
   // 인사 줄에 둘 다 멘션된 글 전체는 원문 확인(내 줄에 다른 사람 동시 멘션)
-  assert.equal(context.pansoriOwnLines_(slots, A), null, 'shared greeting line stays ambiguous');
+  // 11/25: 인사·호칭 줄("@A @B 님, 명일 일정입니다")은 배정이 아니므로 건너뛰고 내 줄만 뽑는다
+  const greeted = context.pansoriOwnLines_(slots, A);
+  assert.ok(greeted && /10시 독도/.test(greeted.summary) && !/우유니|2시 독도/.test(greeted.text), 'greeting line skipped');
+  assert.equal(context.pansoriOwnLines_('<@' + A + '> <@' + B + '> 님, 둘 다 회의록 업데이트 부탁드립니다\n• 10시 - <@' + A + '>', A), null,
+    'shared request line (부탁) still counts as shared → ambiguous');
   const single = context.pansoriMentionRecords_(m('*[배정]*\n• 담당\n    ◦ 10시 독도 - <@' + A + '>\n    ◦ 12시 우유니 - <@' + B + '>', '1700000100.000001', L), me, r2);
   assert.equal(single.length, 1); assert.equal(single[0].pansoriAmbiguous, false);
   assert.match(single[0].pansoriMine, /10시 독도/); assert.match(single[0].url, /^https:\/\/example\.slack\.com\/archives\/C00000001\//);
@@ -75,7 +79,7 @@ console.log('Past meeting excluded before unseen selection; real work, future/re
   assert.equal(context.selectPersonalSlackItems_('Test A', [wait], ['https://x/1'], '2026-11-24', '17:00').length, 1, 'evening repeats reply requests');
   assert.equal(context.selectPersonalSlackItems_('Test A', [wait], ['https://x/1'], '2026-11-24', '14:00').length, 0, 'afternoon new only');
   const text = context.formatPersonalSlackDigest_(context.selectPersonalSlackItems_('Test A', [wait, rep], [], '2026-11-24', '11:00'), '2026-11-24', '11:00', 0);
-  assert.match(text, /\*판소리 · 회신 요청\*/); assert.match(text, /☐ 1\) 가/); assert.doesNotMatch(text, /답장함/);
+  assert.match(text, /\*판소리 · 회신 요청\*/); assert.match(text, /\n      1\) 가/); assert.doesNotMatch(text, /☐/); assert.doesNotMatch(text, /답장함/);
   const again = context.formatPersonalSlackDigest_(context.selectPersonalSlackItems_('Test A', [wait], ['https://x/1'], '2026-11-24', '17:00'), '2026-11-24', '11:00', 0);
   assert.match(again, /\*판소리 · 회신 요청\(이전 안내\) 1건\*/, 'already-sent waiting folds into one line');
 
@@ -153,4 +157,21 @@ console.log('Slack deadline: request-adjacent time passed');
   assert.match(report, /⚠️ .*멘션이 있는데 아무에게도 안 붙음/, 'struck-through mention flagged');
   assert.match(report, /의심 1건 \/ 2건/);
   console.log('Pansori: classification report passed');
+}
+
+// 11/25 피드백: 실제 업무 요청 글 모양 — 인사 줄에 여러 명, 번호 항목마다 담당자·기한
+{
+  const A = 'U00000001', B = 'U00000002', C = 'U00000003';
+  const msg = {sourceChannel:'C00000001', sourceThreadTs:'1700000000.000002', sourceHost:'example.slack.com', ts:'1700000900.000001', user:C,
+    text:'*[업무 요청]*\n<@' + B + '>, <@' + A + '> 님,\n금일 위클리에서 전달드렸던 업무 요청 건 정리하여 공유드립니다.\n• *요청 업무:* \n' +
+      '    ◦ *1) 녹음 운영 시트 업데이트* - <@' + B + '> 님\n        ▪︎ *기한: ~11/27(금) 퇴근 전*\n' +
+      '    ◦ *2) 음원 리스트 추가 서치 -* <@' + A + '> 님\n        ▪︎ *기한: ~ 11/27(금) 퇴근 전* \n' +
+      '    ◦ *3) 모더레이터 SOW 반영 완료 -* <@' + C + '> \n        ▪︎ *기한: ~11/27(금) 퇴근 전*'};
+  const rec = context.pansoriMentionRecords_(msg, [{pm:'Test A', id:A}], {ids:[A, B, C]});
+  assert.equal(rec.length, 1); assert.equal(rec[0].pansoriAmbiguous, false, 'greeting with two people does not block own line');
+  assert.match(rec[0].pansoriMine, /2\) 음원 리스트 추가 서치/); assert.match(rec[0].pansoriMine, /11\/27/);
+  assert.doesNotMatch(rec[0].pansoriMine, /녹음 운영|SOW|님/, 'other people lines and dangling 님 removed');
+  const list = context.pansoriChecklist_(msg.text, A);
+  assert.deepEqual([...list], ['1) 녹음 운영 시트 업데이트', '2) 음원 리스트 추가 서치 (내 담당)', '3) 모더레이터 SOW 반영 완료']);
+  console.log('Pansori 11/25: greeting line, own task with deadline, checklist owner marks passed');
 }
