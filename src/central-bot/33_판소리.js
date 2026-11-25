@@ -136,6 +136,30 @@ function pansoriClassificationReport_(snapshot, people, route, day) {
   return lines;
 }
 
+// BOT_SETTINGS의 PANSORI_RECIPIENTS(이름, 쉼표 구분) → BOT_USERS로 Slack ID를 찾아 PANSORI_RECIPIENT_IDS 값으로(11/25).
+// 이름이 없거나 두 줄 이상이면 반영하지 않는다(잘못된 사람에게 가지 않게). 정기 DM이 꺼진 사람은 경고만 한다.
+function pansoriRecipientIdsFromNames_(value, rows) {
+  const names = [...new Set(String(value || '').split(/[,\n]+/).map(name => name.trim()).filter(Boolean))];
+  if (!names.length || names.length > 100) throw new Error('수신자 이름을 쉼표로 1~100명 적으세요');
+  const problems = [], ids = [], off = [];
+  names.forEach(name => {
+    const found = rows.filter(row => String(row[0] || '').trim() === name);
+    const id = found.length === 1 ? String(found[0][1] || '').trim() : '';
+    if (found.length !== 1 || !/^[UW][A-Z0-9]{8,}$/.test(id)) { problems.push(name + (found.length > 1 ? '(두 줄 이상)' : found.length ? '(Slack ID 확인)' : '(BOT_USERS에 없음)')); return; }
+    ids.push(id);
+    if (found[0][2] !== true || found[0][4] !== true) off.push(name);
+  });
+  if (problems.length) throw new Error('반영 안 함 — ' + problems.join(', '));
+  return {ids:[...new Set(ids)].sort(), names, off};
+}
+
+// 지금 판소리 수신자를 이름으로(미리보기·관리자 확인용). 명단에 없는 ID는 뒤 4자리만.
+function pansoriRecipientNames_(props, rows) {
+  let ids = [];
+  try { ids = JSON.parse(props.getProperty('PANSORI_RECIPIENT_IDS') || '[]') || []; } catch (_) {}
+  return ids.map(id => { const row = rows.find(r => String(r[1] || '').trim() === id); return row ? String(row[0]).trim() : '명단 밖 …' + String(id).slice(-4); });
+}
+
 function readPansoriRoute_(props) {
   if (props.getProperty('ENABLE_PANSORI_READ') !== 'true') return null;
   let ids;
@@ -255,7 +279,7 @@ function pansoriOwnLines_(section, id) {
   if (!ownLines.length || ownLines.includes(null)) return null;
   const titleAt = lines.findIndex(line => line.trim());
   if (titleAt >= 0 && /^\*?\[[^\]]+\]\*?$/.test(lines[titleAt].trim())) picked.add(titleAt);
-  // 멘션은 뒤따르는 "님"까지 지운다("- @PM A 님" → "-"가 남았다가 아래에서 정리됨).
+  // 멘션은 뒤따르는 "님"까지 지운다("- @담당자 님" → "-"가 남았다가 아래에서 정리됨).
   const clean = line => slackDigestPlainSafe_(line.replace(/<@[UW][A-Z0-9]+(?:\|[^>]+)?>\s*님?/g, ''))
     .replace(/[*_~`]/g, '').replace(/^[\s•◦▪︎\-·]+/, '').replace(/[\s\-–—:]+$/, '').replace(/\s+/g, ' ').trim();
   const order = [...picked].sort((a, b) => a - b);

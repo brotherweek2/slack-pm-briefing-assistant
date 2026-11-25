@@ -175,3 +175,17 @@ console.log('Slack deadline: request-adjacent time passed');
   assert.deepEqual([...list], ['1) 녹음 운영 시트 업데이트', '2) 음원 리스트 추가 서치 (내 담당)', '3) 모더레이터 SOW 반영 완료']);
   console.log('Pansori 11/25: greeting line, own task with deadline, checklist owner marks passed');
 }
+
+// 11/25: BOT_SETTINGS PANSORI_RECIPIENTS — 이름으로 수신자 지정
+{
+  const rows = [['PM A', 'U00000001', true, 'a@x', true], ['PM C', 'U00000002', true, 'b@x', true],
+    ['한승효', 'U00000003', false, 'c@x', false], ['동명', 'U00000004', true, '', true], ['동명', 'U00000005', true, '', true]];
+  const r = context.pansoriRecipientIdsFromNames_('PM A, PM C,한승효', rows);
+  assert.deepEqual([...r.ids], ['U00000001', 'U00000002', 'U00000003']);
+  assert.deepEqual([...r.off], ['한승효'], 'DM-off person is warned');
+  assert.throws(() => context.pansoriRecipientIdsFromNames_('PM A, 없는사람', rows), /없는사람\(BOT_USERS에 없음\)/, 'unknown name blocks the whole change');
+  assert.throws(() => context.pansoriRecipientIdsFromNames_('동명', rows), /두 줄 이상/);
+  const props = {getProperty:k => k === 'PANSORI_RECIPIENT_IDS' ? JSON.stringify(['U00000002', 'U00000099']) : null};
+  assert.deepEqual([...context.pansoriRecipientNames_(props, rows)], ['PM C', '명단 밖 …0099']);
+  console.log('Pansori 11/25: recipients by name passed');
+}

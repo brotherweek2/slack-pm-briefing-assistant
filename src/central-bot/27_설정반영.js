@@ -33,10 +33,19 @@ const BOT_SETTINGS = Object.freeze({tab:'BOT_SETTINGS', headers:['setting', 'val
     ENABLE_TASK_DONE:{note:'false면 DM 업무 줄의 ✅ 완료 버튼 끄기'},
     ENABLE_WORKLOG_BRIEFING:{note:'true면 BOT_WORKLOG에서 켠 PM의 10:30·17:00 DM에 Work Log 업무일지 칸 표시'},
     ENABLE_PANSORI_READ:{note:'true면 PANSORI_THREADS의 판소리 스레드를 읽어 PANSORI_RECIPIENT_IDS 수신자 DM에 표시'},
+    // 이름으로 받아 BOT_USERS에서 Slack ID를 찾아 PANSORI_RECIPIENT_IDS에 저장한다. 끄려면 ENABLE_PANSORI_READ=false('삭제'는 받지 않음).
+    PANSORI_RECIPIENTS:{note:'판소리 내용을 DM에 받을 사람 이름(BOT_USERS A열, 쉼표로 구분). 적은 사람들로 전체를 바꿈. 정기 DM 대상(send_enabled·캘린더 연결)이어야 실제로 받음',
+      pattern:/^(?!삭제$)[^,\n]+(?:[,\n][^,\n]*)*$/},
     PANSORI_THREADS:{note:'판소리에서 읽을 Slack 스레드 링크(메시지 링크 복사). 여러 개는 쉼표로 구분, 최대 20개. 비우면 판소리 읽기 건너뜀',
       pattern:/^(?:\s*https:\/\/[a-z0-9-]+\.slack\.com\/archives\/[CG][A-Z0-9]{8,}\/p\d{16,}(?:\?[^\s,]*)?\s*(?:,|$))+$|^삭제$/i},
     WORKLOG_SPREADSHEET_ID:{note:'Work Log 시트 주소 또는 ID(TASKS 탭을 읽기만 함)', pattern:/^(https:\/\/docs\.google\.com\/spreadsheets\/d\/[A-Za-z0-9_-]{20,}.*|[A-Za-z0-9_-]{20,}|삭제)$/},
   }});
+
+// BOT_USERS 행(이름·Slack ID·send_enabled·이메일·calendar_connect). 판소리 수신자 이름 변환에 쓴다.
+function botUserRowsForSettings_(props) {
+  const bot = SpreadsheetApp.openById(requiredProperty_(props, 'BOT_SPREADSHEET_ID'));
+  return readBotRows_(requireBotSheet_(bot, BOT_WORKBOOK.usersTab, BOT_WORKBOOK.userHeaders), BOT_WORKBOOK.userHeaders.length);
+}
 
 function botSettingsSheet_(props, create) {
   const bot = SpreadsheetApp.openById(requiredProperty_(props, 'BOT_SPREADSHEET_ID'));
@@ -81,6 +90,18 @@ function applyBotSettings() {
       if (info.secret) sheet.getRange(index + 2, 2).setValue('');
       return;
     }
+    if (key === 'PANSORI_RECIPIENTS') {
+      // 이름 → Slack ID. 하나라도 못 찾으면 전체를 반영하지 않고 값은 시트에 남겨 고칠 수 있게 한다.
+      let result;
+      try { result = pansoriRecipientIdsFromNames_(value, botUserRowsForSettings_(props)); }
+      catch (error) { invalid.push(key + ' ' + error.message); return; }
+      props.setProperty('PANSORI_RECIPIENT_IDS', JSON.stringify(result.ids));
+      applied.push('판소리 수신자 = ' + result.names.join(', ') + (result.off.length ?
+        ' (⚠️ 정기 DM이 꺼져 있어 실제로는 안 받음: ' + result.off.join(', ') + ' → BOT_USERS send_enabled·캘린더 연결 필요)' : '') +
+        ' · 다음 Slack 수집부터 반영');
+      sheet.getRange(index + 2, 2).setValue('');
+      return;
+    }
     if (value === '삭제') props.deleteProperty(key);
     else props.setProperty(key, value);
     applied.push(key + (value === '삭제' ? ' 삭제' : info.secret ? ' 저장(값 숨김)' : ' = ' + value));
@@ -108,6 +129,13 @@ function applyBotSettings() {
 function previewBotSettings() {
   const props = PropertiesService.getScriptProperties();
   Object.entries(BOT_SETTINGS.allowed).forEach(([key, info]) => {
+    if (key === 'PANSORI_RECIPIENTS') {
+      // 실제 저장은 PANSORI_RECIPIENT_IDS(Slack ID). 이름으로 바꿔 보여 준다.
+      let names = [];
+      try { names = pansoriRecipientNames_(props, botUserRowsForSettings_(props)); } catch (error) { names = ['(명단 확인 실패)']; }
+      console.log(key + ' : ' + (names.length ? names.join(', ') : '(없음)'));
+      return;
+    }
     const value = props.getProperty(key);
     console.log(key + ' : ' + (value === null ? '(없음)' : info.secret ? '설정됨' : value));
   });

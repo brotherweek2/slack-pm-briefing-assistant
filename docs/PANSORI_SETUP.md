@@ -27,7 +27,8 @@
 | 설정 | 의미 |
 | --- | --- |
 | `ENABLE_PANSORI_READ` | true일 때 판소리 읽기 활성 |
-| `PANSORI_RECIPIENT_IDS` | 봇 명단과 일치하는 수신자 Slack ID JSON 배열 |
+| `PANSORI_RECIPIENTS` | **수신자 이름**(BOT_USERS A열, 쉼표로 구분). BOT_SETTINGS에 적고 applyBotSettings → Slack ID로 바꿔 `PANSORI_RECIPIENT_IDS`에 저장. 적은 사람들로 전체를 바꾸고, 없는·중복 이름이면 반영 안 함. 정기 DM(send_enabled·캘린더 연결)이 꺼진 사람은 경고만 하고 실제로는 안 받음. 지금 수신자는 previewBotSettings에서 이름으로 확인 |
+| `PANSORI_RECIPIENT_IDS` | 실제 저장되는 수신자 Slack ID JSON 배열(직접 고치지 말고 위 이름 설정 사용) |
 | `PANSORI_THREADS` | 읽을 스레드 메시지 링크. 최대 20개, 쉼표로 구분 |
 
 - 봇이 해당 채널에 참여하고 필요한 읽기 권한을 가지고 있어야 한다.
